@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="theme-color" content="#1a3a5c"/>
+<title>Verbruggen — Planning Semaine</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+  :root{--bleu:#1a3a5c;--bleu2:#2563eb;--accent:#f59e0b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;font-family:'Inter',system-ui,sans-serif}
+  body{
+    min-height:100vh;
+    background:linear-gradient(135deg,#0f2540 0%,#1a3a5c 50%,#1e4976 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:24px;
+    position:relative;overflow:hidden;
+  }
+  /* background circles */
+  body::before,body::after{
+    content:'';position:absolute;border-radius:50%;opacity:.07;
+    background:radial-gradient(circle,#fff 0%,transparent 70%);
+  }
+  body::before{width:600px;height:600px;top:-200px;right:-150px}
+  body::after{width:400px;height:400px;bottom:-150px;left:-100px}
+
+  .logo{font-size:48px;margin-bottom:8px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.3))}
+  h1{color:#fff;font-size:clamp(22px,5vw,32px);font-weight:900;letter-spacing:-1px;margin-bottom:4px;text-align:center}
+  .sub{color:rgba(255,255,255,.6);font-size:14px;margin-bottom:48px;text-align:center;font-weight:500}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;width:100%;max-width:600px}
+
+  .card{
+    background:rgba(255,255,255,.07);
+    border:1.5px solid rgba(255,255,255,.15);
+    border-radius:20px;
+    padding:28px 24px;
+    text-decoration:none;
+    display:flex;flex-direction:column;align-items:flex-start;
+    gap:10px;
+    transition:all .25s cubic-bezier(.34,1.56,.64,1);
+    backdrop-filter:blur(12px);
+    cursor:pointer;
+    position:relative;overflow:hidden;
+  }
+  .card::before{
+    content:'';position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(255,255,255,.08) 0%,transparent 60%);
+    opacity:0;transition:opacity .25s;
+  }
+  .card:hover{transform:translateY(-4px) scale(1.02);border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
+  .card:hover::before{opacity:1}
+  .card:active{transform:translateY(0) scale(.99)}
+
+  .card-icon{font-size:36px;margin-bottom:4px}
+  .card-title{color:#fff;font-size:18px;font-weight:800;letter-spacing:-.4px}
+  .card-desc{color:rgba(255,255,255,.6);font-size:12px;line-height:1.5;font-weight:500}
+  .card-arrow{
+    margin-top:8px;
+    background:rgba(255,255,255,.15);
+    color:#fff;font-size:12px;font-weight:700;
+    padding:8px 16px;border-radius:8px;
+    border:1px solid rgba(255,255,255,.2);
+    transition:background .2s;
+  }
+  .card:hover .card-arrow{background:rgba(255,255,255,.25)}
+
+  .card.pc .card-arrow{background:var(--bleu2);border-color:var(--bleu2)}
+  .card.pc:hover .card-arrow{background:#1d4ed8}
+  .card.gsm .card-arrow{background:#059669;border-color:#059669}
+  .card.gsm:hover .card-arrow{background:#047857}
+
+  .version{
+    margin-top:36px;
+    color:rgba(255,255,255,.3);
+    font-size:11px;font-weight:500;
+    text-align:center;
+  }
+  .dot{
+    display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:#22c55e;margin-right:5px;vertical-align:middle;
+    box-shadow:0 0 6px #22c55e;animation:pulse 2s infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+</head>
+<body>
+  <div class="logo">🪵</div>
+  <h1>Verbruggen Planning</h1>
+  <p class="sub">Planification hebdomadaire du personnel</p>
+
+  <div class="cards">
+    <a class="card pc" href="pc.html">
+      <div class="card-icon">🖥️</div>
+      <div class="card-title">Version PC</div>
+      <div class="card-desc">Encodage du planning semaine par le chef de production. Vue complète, grille tableau, impression A3.</div>
+      <div class="card-arrow">Ouvrir →</div>
+    </a>
+    <a class="card gsm" href="gsm.html">
+      <div class="card-icon">📱</div>
+      <div class="card-title">Version Mobile</div>
+      <div class="card-desc">Consultation du planning personnel et encodage des heures prestées. Optimisé pour GSM.</div>
+      <div class="card-arrow">Ouvrir →</div>
+    </a>
+  </div>
+
+  <div class="version">
+    <span class="dot"></span>Firebase synchronisé · v3.0
+  </div>
+</body>
+</html>
