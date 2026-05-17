@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#1a3a5c"/>
-<title>Verbruggen Planning — PC</title>
+<title>Verbruggen Planning</title>
 <style>
 :root{--bleu:#1a3a5c;--bleu2:#2563eb;--r:12px;--sh:0 2px 12px rgba(0,0,0,.12);--bd:#e2e8f0}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -280,6 +280,7 @@ input,select{font-size:14px}
     <div class="login-help">Les rôles <b>admin</b>, <b>chef</b> et <b>personnel</b> sont lus automatiquement dans Firebase.</div>
     <div class="login-help">Pour un compte <b>personnel</b>, ajoutez aussi un <b>personId</b> dans Firestore (ou comme custom claim) pour relier le compte à la bonne personne.</div>
   </div>
+  <button onclick="doResetAllPins()" style="margin-top:16px;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.35);color:#fff;border-radius:10px;padding:10px 22px;font-size:12px;font-weight:700;cursor:pointer;">🔑 Réinitialiser tous les PIN</button>
 </div>
 
 <div id="app">
@@ -419,7 +420,9 @@ function stopDataListener(){
   if(dataRef&&dataListener) dataRef.off('value',dataListener);
   dataRef=null; dataListener=null;
 }
+var ignoreRemoteUntil=0;
 function applyRemoteData(val){
+  if(Date.now()<ignoreRemoteUntil) return;
   val=val||{};
   if(val.planning) planning=val.planning; else planning={};
   if(val.pointage) pointage=val.pointage; else pointage={};
@@ -511,6 +514,7 @@ function initFirebase(){
 }
 function fbSave(){
   if(!db||!fbConnected||!auth||!auth.currentUser) return;
+  ignoreRemoteUntil=Date.now()+1500;
   try{
     if(role==='chef'){
       db.ref('data').set({
@@ -776,6 +780,14 @@ function restoreEditorScrollState(state){
 }
 
 // ── STORAGE ──────────────────────────────────────────────────
+function doResetAllPins(){
+  if(!confirm('Réinitialiser TOUS les PIN ?\n\nLe PIN chef redeviendra 12345.\nTous les PIN du personnel seront supprimés.\n\nContinuer ?')) return;
+  chefUsers=chefUsers.map(function(c){return Object.assign({},c,{pin:'12345'});});
+  personPins={};
+  try{lsSave();}catch(e){}
+  try{fbSave();}catch(e){}
+  alert('✅ PIN réinitialisés !\n\nPIN chef : 12345\nPersonnel : chaque personne devra créer un nouveau PIN à la première connexion.');
+}
 function lsSave(){
   try{
     localStorage.setItem('vb_plan_v7',JSON.stringify(planning));
@@ -1281,8 +1293,13 @@ function renderMyPlan(){
 }
 
 // ── POINTAGE ─────────────────────────────────────────────────
+var focusedExtraField=null;
 function renderPointage(){
   var el=document.getElementById('tab-pointage'); if(!el) return;
+  // Skip render if user is currently typing in an extra field
+  if(focusedExtraField && document.activeElement && document.activeElement.id===focusedExtraField){
+    return;
+  }
   var html='';
   if(role==='chef'){
     var act=activePeople(); var selId=ptSelPers||((act[0]&&act[0].id)||''); if(selId && !pinfo(selId).active) selId=(act[0]&&act[0].id)||selId;
@@ -1318,8 +1335,8 @@ function pointageDetailHtml(pid){
       rows+='<div class="pt-row pt-extra" style="border-left:6px dashed #94a3b8">'
         +'<div class="pt-info"><div class="extra-fields">'
         +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
-        +'<input placeholder="N°" value="'+(it.num||'')+'" oninput="setExtraField(\''+pid+'\','+di+','+idx+',\'num\',this.value)"/>'
-        +'<input placeholder="Client / libellé" value="'+(it.nom||'')+'" oninput="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)"/>'
+        +'<input id="extra-num-'+pid+'-'+di+'-'+idx+'" placeholder="N°" value="'+(it.num||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'num\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
+        +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Client / libellé" value="'+(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
         +'</div><span class="pt-planned">Chantier imprévu : choisissez un chantier existant ou encodez un nouveau numéro et descriptif.</span></div>'
         +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><div class="hval">'+fmtHShort(it.h)+'</div><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
         +'<button class="mini-btn" style="color:#dc2626" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'

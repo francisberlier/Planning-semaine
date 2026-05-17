@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#1a3a5c"/>
-<title>Verbruggen Planning — Mobile</title>
+<title>Verbruggen Planning</title>
 <style>
 :root{--bleu:#1a3a5c;--bleu2:#2563eb;--r:12px;--sh:0 2px 12px rgba(0,0,0,.12);--bd:#e2e8f0}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -301,6 +301,7 @@ input,select{font-size:14px}
     </div>
     <button class="btn-login" id="btn-login" onclick="doLogin()" disabled>Entrer</button>
   </div>
+  <button onclick="doResetAllPins()" style="margin-top:16px;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.35);color:#fff;border-radius:10px;padding:10px 22px;font-size:12px;font-weight:700;cursor:pointer;">🔑 Réinitialiser tous les PIN</button>
 </div>
 
 <div id="app">
@@ -405,6 +406,7 @@ function initFirebase(){
 }
 function fbSave(){
   if(!db||!fbConnected) return;
+  ignoreRemoteUntil=Date.now()+1500;
   try{
     db.ref('data').set({
       planning:planning,
@@ -417,9 +419,11 @@ function fbSave(){
     });
   }catch(e){}
 }
+var ignoreRemoteUntil=0;
 function fbListen(){
   if(!db) return;
   db.ref('data').on('value', function(snap){
+    if(Date.now()<ignoreRemoteUntil) return;
     var val=snap.val(); if(!val) return;
     if(val.planning) planning=val.planning;
     if(val.pointage) pointage=val.pointage;
@@ -675,6 +679,14 @@ function restoreEditorScrollState(state){
 }
 
 // ── STORAGE ──────────────────────────────────────────────────
+function doResetAllPins(){
+  if(!confirm('Réinitialiser TOUS les PIN ?\n\nLe PIN chef redeviendra 12345.\nTous les PIN du personnel seront supprimés.\n\nContinuer ?')) return;
+  chefUsers=chefUsers.map(function(c){return Object.assign({},c,{pin:'12345'});});
+  personPins={};
+  try{lsSave();}catch(e){}
+  try{fbSave();}catch(e){}
+  alert('✅ PIN réinitialisés !\n\nPIN chef : 12345\nPersonnel : chaque personne devra créer un nouveau PIN à la première connexion.');
+}
 function lsSave(){
   try{
     localStorage.setItem('vb_plan_v7',JSON.stringify(planning));
@@ -1195,7 +1207,7 @@ function pointageDetailHtml(pid){
         +'<div class="pt-info"><div class="extra-fields">'
         +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
         +'<button class="num-field-btn" onclick="openExtraNumPad(\''+pid+'\','+di+','+idx+')">'+((it.num||'').trim()?escAttr(it.num):'N° chantier')+'</button>'
-        +'<input placeholder="Libellé" value="'+escAttr(it.nom||'')+'" oninput="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)"/>'
+        +'<input placeholder="Libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)"/>'
         +'</div></div>'
         +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><button class="hval-btn" onclick="openHoursPad(\''+pid+'\','+di+','+idx+',true)">'+fmtHShort(it.h)+'</button><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
         +'<button class="mini-btn" style="color:#dc2626" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
@@ -1222,7 +1234,7 @@ function openHoursPad(pid,di,idx,isExtra){
 }
 function openExtraNumPad(pid,di,idx){
   var day=getPointageDay(pid,di); if(!day.extras[idx]) return;
-  openNumPad({title:'N° chantier',mode:'integer',value:String(day.extras[idx].num||''),onSave:function(v){var d=getPointageDay(pid,di); if(!d.extras[idx]) return; d.extras[idx].num=String(v||'').replace(/\D/g,''); savePointageDay(pid,di,d,null); renderPointage();}});
+  openNumPad({title:'N° chantier',mode:'integer',value:'',onSave:function(v){var d=getPointageDay(pid,di); if(!d.extras[idx]) return; d.extras[idx].num=String(v||'').replace(/\D/g,''); savePointageDay(pid,di,d,null); renderPointage();}});
 }
 
 function openNumPad(cfg){
