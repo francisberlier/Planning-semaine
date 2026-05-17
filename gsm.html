@@ -1177,8 +1177,12 @@ function renderMyPlan(){
 }
 
 // ── POINTAGE ─────────────────────────────────────────────────
+var focusedExtraField=null;
 function renderPointage(){
   var el=document.getElementById('tab-pointage'); if(!el) return;
+  if(focusedExtraField && document.activeElement && document.activeElement.id===focusedExtraField){
+    return;
+  }
   var st=el.scrollTop||0;
   var pid=selectedMobilePersonId();
   if(role==='chef' && !pid){ el.innerHTML='<div class="mobile-empty">Choisissez d’abord une personne dans l’onglet Personnel.</div>'; return; }
@@ -1207,7 +1211,7 @@ function pointageDetailHtml(pid){
         +'<div class="pt-info"><div class="extra-fields">'
         +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
         +'<button class="num-field-btn" onclick="openExtraNumPad(\''+pid+'\','+di+','+idx+')">'+((it.num||'').trim()?escAttr(it.num):'N° chantier')+'</button>'
-        +'<input placeholder="Libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)"/>'
+        +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
         +'</div></div>'
         +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><button class="hval-btn" onclick="openHoursPad(\''+pid+'\','+di+','+idx+',true)">'+fmtHShort(it.h)+'</button><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
         +'<button class="mini-btn" style="color:#dc2626" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
