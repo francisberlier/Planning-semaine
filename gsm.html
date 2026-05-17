@@ -1214,7 +1214,7 @@ function pointageDetailHtml(pid){
         +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
         +'</div></div>'
         +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><button class="hval-btn" onclick="openHoursPad(\''+pid+'\','+di+','+idx+',true)">'+fmtHShort(it.h)+'</button><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
-        +'<button class="mini-btn" style="color:#dc2626" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
+        +'<button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;padding:8px 14px;font-weight:600" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">🗑️ Supprimer chantier</button>'
         +'</div>';
     });
     rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button></div>';
