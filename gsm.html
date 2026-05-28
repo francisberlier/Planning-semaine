@@ -149,7 +149,7 @@ input,select{font-size:14px}
 .setting-row .meta{flex:1}
 .setting-row .meta b{display:block;font-size:13px}
 .setting-row .meta span{font-size:11px;color:#64748b}
-.person-editor{display:grid;grid-template-columns:minmax(160px,1.2fr) 140px 150px auto auto;gap:8px;align-items:center;flex:1;min-width:0}
+.person-editor{display:grid;grid-template-columns:minmax(140px,1.1fr) 120px 130px 130px auto auto;gap:8px;align-items:center;flex:1;min-width:0}
 .person-editor input,.person-editor select{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;font-size:12px;width:100%;background:#fff}
 .person-tools{display:flex;gap:8px;flex-wrap:wrap}
 .setting-addbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
@@ -480,19 +480,21 @@ var TYPES=[
   {id:'F',lbl:'Finition',col:'#dc2626'},
   {id:'T',lbl:'Transport',col:'#7c3aed'},
   {id:'P',lbl:'Pose',col:'#2563eb'},
-  {id:'CE',lbl:'Chômage',col:'#94a3b8'},
-  {id:'V',lbl:'Vacances',col:'#f59e0b'},
+  {id:'CE',lbl:'Chômage',col:'#ef4444'},
+  {id:'V',lbl:'Vacances',col:'#facc15'},
   {id:'C',lbl:'Congé',col:'#ec4899'},
+  {id:'ML',lbl:'Malade',col:'#fca5a5'},
   {id:'B',lbl:'Bureau',col:'#64748b'}
 ];
-var GCOL={M:'#f97316',A:'#16a34a',F:'#dc2626',T:'#7c3aed',P:'#2563eb',CE:'#94a3b8',V:'#f59e0b',C:'#ec4899',B:'#64748b'};
+var GCOL={M:'#f97316',A:'#16a34a',F:'#dc2626',T:'#7c3aed',P:'#2563eb',CE:'#ef4444',V:'#facc15',C:'#ec4899',ML:'#fca5a5',B:'#64748b'};
 var DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 var LEGACY_SLOTS=['AM1','AM2','PM1','PM2'];
-var NOCH={CE:1,V:1,C:1,B:1};
+var NOCH={CE:1,V:1,C:1,ML:1,B:1};
 var NOCH_COLOR={
-  CE:{bg:'#fee2e2',fg:'#991b1b',brd:'#dc2626'},
-  V:{bg:'#fef9c3',fg:'#713f12',brd:'#ca8a04'},
+  CE:{bg:'#fecaca',fg:'#7f1d1d',brd:'#ef4444'},
+  V:{bg:'#fef08a',fg:'#713f12',brd:'#eab308'},
   C:{bg:'#fdf2f8',fg:'#9d174d',brd:'#ec4899'},
+  ML:{bg:'#fef2f2',fg:'#b91c1c',brd:'#fca5a5'},
   B:{bg:'#e2e8f0',fg:'#334155',brd:'#64748b'}
 };
 var PALETTE=[
@@ -562,13 +564,13 @@ function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.col
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
 function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
-function defaultTypeForPerson(pid){var g=(pinfo(pid).g||'').toUpperCase(); for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]) return g; return 'P';}
+function defaultTypeForPerson(pid){var p=pinfo(pid); var dt=(p.defaultType||'').toUpperCase(); if(dt&&tinfo(dt)&&tinfo(dt).id===dt) return dt; var g=(p.g||'').toUpperCase(); if(g==='B') return 'B'; for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]) return g; return 'P';}
 
-function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'Atelier',F:'Finition',T:'Transport',P:'Pose'}; return m[g]||g||'';}
+function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'Atelier',F:'Finition',T:'Transport',P:'Pose',B:'Bureau'}; return m[g]||g||'';}
 function activePeople(){return PERS.filter(function(p){return p && p.active!==false;});}
 function archivedPeople(){return PERS.filter(function(p){return p && p.active===false;});}
-function sortPeople(){var order={M:1,A:2,F:3,T:4,P:5}; PERS.sort(function(a,b){var aa=(a&&a.active!==false)?0:1, bb=(b&&b.active!==false)?0:1; if(aa!==bb) return aa-bb; var ag=order[(a.g||'').toUpperCase()]||99, bg=order[(b.g||'').toUpperCase()]||99; if(ag!==bg) return ag-bg; return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});});}
-function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(!GCOL[g]||NOCH[g]) g='P'; return {id:p.id||('pers_'+i+'_'+Date.now().toString(36)), nom:String(p.nom||('Personne '+(i+1))).trim(), g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), active:p.active!==false};}
+function sortPeople(){var order={M:1,A:2,F:3,T:4,P:5,B:6}; PERS.sort(function(a,b){var aa=(a&&a.active!==false)?0:1, bb=(b&&b.active!==false)?0:1; if(aa!==bb) return aa-bb; var ag=order[(a.g||'').toUpperCase()]||99, bg=order[(b.g||'').toUpperCase()]||99; if(ag!==bg) return ag-bg; return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});});}
+function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(g!=='B'&&(!GCOL[g]||NOCH[g])) g='P'; var dt=String(p.defaultType||'').toUpperCase(); if(dt&&!(tinfo(dt)&&tinfo(dt).id===dt)) dt=''; return {id:p.id||('pers_'+i+'_'+Date.now().toString(36)), nom:String(p.nom||('Personne '+(i+1))).trim(), g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), defaultType:dt, active:p.active!==false};}
 function makePersonId(name){return 'pers_'+String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,18)+'_'+Date.now().toString(36).slice(-4);}
 function manualSave(label){lsSave(); fbSave(); updateStatusBar(); toast((label||'Données')+' sauvegardé');}
 function weekChantierCatalog(){
@@ -837,6 +839,49 @@ function savePointageDay(pid,di,day,historyText,before,after){
   if(historyText) addHistoryEntry(historyText,before,after);
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
 }
+// ── SYNCHRO POINTAGE → PLANNING (Option C) ───────────────────
+function pointageDayToTasks(pid,di){
+  var day=getPointageDay(pid,di); var tasks=[];
+  (day.items||[]).forEach(function(it){
+    var h=roundQuarter(it.h); if(h<=0) return;
+    tasks.push(sanitizeTask({type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+  });
+  var dft=defaultTypeForPerson(pid);
+  (day.extras||[]).forEach(function(it){
+    var h=roundQuarter(it.h); if(h<=0) return;
+    if(!String(it.num||'').trim()&&!String(it.nom||'').trim()) return;
+    tasks.push(sanitizeTask({type:dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+  });
+  return tasks;
+}
+function applyPointageToPlanning(pid,di){
+  var day=getPointageDay(pid,di);
+  if(!day||!day.pointed) return false;
+  var tasks=pointageDayToTasks(pid,di);
+  return setDayTasks(pid,di,tasks,{skipUndo:false,undoLabel:'Synchro pointage → planning'});
+}
+function validatePointagePerson(pid){
+  var n=0; for(var di=0;di<6;di++){ if(applyPointageToPlanning(pid,di)) n++; }
+  lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  if(currentTab==='planning') renderPlanning(); if(currentTab==='myplan') renderMyPlan();
+  toast(n?('Planning mis à jour ('+n+' jour'+(n>1?'s':'')+')'):'Aucun pointage à reporter');
+}
+var _lastAutoSyncDate='';
+function checkAutoSync(){
+  try{
+    var now=new Date();
+    if(now.getHours()===16 && now.getMinutes()===0){
+      var stamp=now.toISOString().slice(0,10);
+      if(_lastAutoSyncDate===stamp) return;
+      _lastAutoSyncDate=stamp;
+      if(!isManager()) return;
+      var di=(now.getDay()+6)%7; if(di>5) return;
+      var n=0; activePeople().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
+      if(n){lsSave(); fbSave(); updateStatusBar(); if(currentTab==='planning') renderPlanning(); toast('Auto-synchro 16h : '+n+' pointage(s) reporté(s)');}
+    }
+  }catch(e){}
+}
+setInterval(checkAutoSync,30000);
 
 // ── LOGIN ────────────────────────────────────────────────────
 function selectRole(r){
@@ -1246,6 +1291,7 @@ function renderPointage(){
 }
 function pointageDetailHtml(pid){
   var p=pinfo(pid), col=tcol(p.g), html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">Pointage semaine '+isoWeek(wkMon)+'</div></div>'+(isManager()?'<div class="person-actions"><button class="mini-btn" onclick="showTab(\'personnel\')">Changer</button><button class="mini-btn" onclick="showTab(\'planning\')">Voir planning</button></div>':'')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div>';
+  html+='<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">✓ Valider mon pointage → planning</button></div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -1280,20 +1326,20 @@ function pointageDetailHtml(pid){
 }
 function adjustPointage(pid,di,idx,isExtra,delta){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
-  var before=clone(day); arr[idx].h=Math.max(0,roundQuarter((parseFloat(arr[idx].h)||0)+delta));
+  var before=clone(day); arr[idx].h=Math.max(0,roundQuarter((parseFloat(arr[idx].h)||0)+delta)); day.pointed=true;
   savePointageDay(pid,di,day,'Pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
 }
-function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({num:'',nom:'',h:0}); savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
-function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
-function setExtraField(pid,di,idx,f,v){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; day.extras[idx][f]=v; savePointageDay(pid,di,day,null);}
-function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
+function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({num:'',nom:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function setExtraField(pid,di,idx,f,v){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; day.extras[idx][f]=v; day.pointed=true; savePointageDay(pid,di,day,null);}
+function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; day.pointed=true; savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
 function openHoursPad(pid,di,idx,isExtra){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
-  openNumPad({title:'Encoder la durée',mode:'hours',value:String(arr[idx].h||0),onSave:function(v){var d=getPointageDay(pid,di), a=isExtra?d.extras:d.items; if(!a[idx]) return; var before=clone(d); a[idx].h=Math.max(0,roundQuarter(parseFloat(String(v).replace(',', '.'))||0)); savePointageDay(pid,di,d,'Encodage durée : '+pinfo(pid).nom+' — '+DAYS[di],before,d); renderPointage();}});
+  openNumPad({title:'Encoder la durée',mode:'hours',value:String(arr[idx].h||0),onSave:function(v){var d=getPointageDay(pid,di), a=isExtra?d.extras:d.items; if(!a[idx]) return; var before=clone(d); a[idx].h=Math.max(0,roundQuarter(parseFloat(String(v).replace(',', '.'))||0)); d.pointed=true; savePointageDay(pid,di,d,'Encodage durée : '+pinfo(pid).nom+' — '+DAYS[di],before,d); renderPointage();}});
 }
 function openExtraNumPad(pid,di,idx){
   var day=getPointageDay(pid,di); if(!day.extras[idx]) return;
-  openNumPad({title:'N° chantier',mode:'integer',value:'',onSave:function(v){var d=getPointageDay(pid,di); if(!d.extras[idx]) return; d.extras[idx].num=String(v||'').replace(/\D/g,''); savePointageDay(pid,di,d,null); renderPointage();}});
+  openNumPad({title:'N° chantier',mode:'integer',value:'',onSave:function(v){var d=getPointageDay(pid,di); if(!d.extras[idx]) return; d.extras[idx].num=String(v||'').replace(/\D/g,''); d.pointed=true; savePointageDay(pid,di,d,null); renderPointage();}});
 }
 
 function openNumPad(cfg){
@@ -1359,11 +1405,12 @@ function renderSettings(){
   html+=`<button class="add-btn" onclick="addChefUser('chef')">+ Ajouter un chef</button></div>`;
 
   html+=`<div class="setting-box"><h3>Personnel</h3><p>Ajoutez un nom dans une section, modifiez la section, le numéro de GSM et le PIN de chaque personne.</p>`;
-  html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button></div>`;
+  html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button><button onclick="addPersonToGroup('B')">+ Bureau</button></div>`;
   PERS.forEach(function(p){
     var col=tcol(p.g);
-    var opts=['M','A','F','T','P'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
-    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:${col}">${p.nom.charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" /><span class="pin-tag">${personPins[p.id]?'PIN défini':'À créer'}</span><div class="person-tools"><button class="mini-btn" onclick="openPinModal('pers','${p.id}')">${personPins[p.id]?'Changer PIN':'Définir PIN'}</button></div></div></div>`;
+    var opts=['M','A','F','T','P','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
+    var dtOpts='<option value="">Type auto ('+sectionLabel(p.g)+')</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
+    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:${col}">${p.nom.charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" /><span class="pin-tag">${personPins[p.id]?'PIN défini':'À créer'}</span><div class="person-tools"><button class="mini-btn" onclick="openPinModal('pers','${p.id}')">${personPins[p.id]?'Changer PIN':'Définir PIN'}</button></div></div></div>`;
   });
   html+=`</div>`;
   el.innerHTML=html;
@@ -1411,6 +1458,7 @@ function updatePersonSection(pid,g){
   addHistoryEntry('Changement de section : '+before.nom+' → '+sectionLabel(p.g),before,p);
   lsSave(); fbSave(); renderSettings(); buildUserList(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();
 }
+function updatePersonDefaultType(pid,t){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); t=String(t||'').toUpperCase(); if(t&&!(tinfo(t)&&tinfo(t).id===t)) t=''; p.defaultType=t; addHistoryEntry('Type par défaut : '+p.nom+' → '+(t?tinfo(t).lbl:'auto'),before,p); lsSave(); fbSave(); renderSettings(); updateStatusBar();}
 
 // ── PIN MODAL ────────────────────────────────────────────────
 function pmLen(){return (pinEditTarget&&pinEditTarget.kind==='chef')?CHEF_PIN_LENGTH:PIN_LENGTH;}

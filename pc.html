@@ -136,6 +136,8 @@ input,select{font-size:14px}
 .hctrl{display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--bd);border-radius:12px;padding:4px}
 .hctrl button{width:30px;height:30px;border-radius:8px;border:1px solid var(--bd);background:#fff;font-size:16px;font-weight:900}
 .hval{min-width:62px;text-align:center;font-size:15px;font-weight:800;color:var(--bleu)}
+.hval-input{min-width:62px;width:62px;border:1px solid var(--bd);border-radius:8px;padding:5px 4px;font-size:15px;font-weight:800;color:var(--bleu);text-align:center;background:#fff;-moz-appearance:textfield}
+.hval-input::-webkit-outer-spin-button,.hval-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .line-actions{padding:0 10px 10px 10px}
 .line-actions button{border:1px dashed #94a3b8;background:#f8fafc;color:#64748b;border-radius:10px;padding:8px 12px;font-size:11px;font-weight:700}
 .extra-fields{display:grid;grid-template-columns:190px 96px 1fr;gap:8px}
@@ -157,7 +159,7 @@ input,select{font-size:14px}
 .setting-row .meta{flex:1}
 .setting-row .meta b{display:block;font-size:13px}
 .setting-row .meta span{font-size:11px;color:#64748b}
-.person-editor{display:grid;grid-template-columns:minmax(160px,1.2fr) 140px 150px auto auto;gap:8px;align-items:center;flex:1;min-width:0}
+.person-editor{display:grid;grid-template-columns:minmax(140px,1.1fr) 120px 130px 130px auto auto;gap:8px;align-items:center;flex:1;min-width:0}
 .person-editor input,.person-editor select{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;font-size:12px;width:100%;background:#fff}
 .person-tools{display:flex;gap:8px;flex-wrap:wrap}
 .setting-addbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
@@ -478,19 +480,21 @@ var TYPES=[
   {id:'F',lbl:'Finition',col:'#dc2626'},
   {id:'T',lbl:'Transport',col:'#7c3aed'},
   {id:'P',lbl:'Pose',col:'#2563eb'},
-  {id:'CE',lbl:'Chômage',col:'#94a3b8'},
-  {id:'V',lbl:'Vacances',col:'#f59e0b'},
+  {id:'CE',lbl:'Chômage',col:'#ef4444'},
+  {id:'V',lbl:'Vacances',col:'#facc15'},
   {id:'C',lbl:'Congé',col:'#ec4899'},
+  {id:'ML',lbl:'Malade',col:'#fca5a5'},
   {id:'B',lbl:'Bureau',col:'#64748b'}
 ];
-var GCOL={M:'#f97316',A:'#16a34a',F:'#dc2626',T:'#7c3aed',P:'#2563eb',CE:'#94a3b8',V:'#f59e0b',C:'#ec4899',B:'#64748b'};
+var GCOL={M:'#f97316',A:'#16a34a',F:'#dc2626',T:'#7c3aed',P:'#2563eb',CE:'#ef4444',V:'#facc15',C:'#ec4899',ML:'#fca5a5',B:'#64748b'};
 var DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 var LEGACY_SLOTS=['AM1','AM2','PM1','PM2'];
-var NOCH={CE:1,V:1,C:1,B:1};
+var NOCH={CE:1,V:1,C:1,ML:1,B:1};
 var NOCH_COLOR={
-  CE:{bg:'#fee2e2',fg:'#991b1b',brd:'#dc2626'},
-  V:{bg:'#fef9c3',fg:'#713f12',brd:'#ca8a04'},
+  CE:{bg:'#fecaca',fg:'#7f1d1d',brd:'#ef4444'},
+  V:{bg:'#fef08a',fg:'#713f12',brd:'#eab308'},
   C:{bg:'#fdf2f8',fg:'#9d174d',brd:'#ec4899'},
+  ML:{bg:'#fef2f2',fg:'#b91c1c',brd:'#fca5a5'},
   B:{bg:'#e2e8f0',fg:'#334155',brd:'#64748b'}
 };
 var PALETTE=[
@@ -513,7 +517,19 @@ var PALETTE=[
   {bg:'#e4dfec',fg:'#1f2937',brd:'#b4a7d6'},
   {bg:'#d9d9d9',fg:'#1f2937',brd:'#7f7f7f'},
   {bg:'#f4cccc',fg:'#7f1d1d',brd:'#e06666'},
-  {bg:'#d9d2e9',fg:'#4c1d95',brd:'#8e7cc3'}
+  {bg:'#d9d2e9',fg:'#4c1d95',brd:'#8e7cc3'},
+  {bg:'#0ea5e9',fg:'#ffffff',brd:'#0ea5e9'},
+  {bg:'#14b8a6',fg:'#ffffff',brd:'#14b8a6'},
+  {bg:'#84cc16',fg:'#1f2937',brd:'#84cc16'},
+  {bg:'#f43f5e',fg:'#ffffff',brd:'#f43f5e'},
+  {bg:'#8b5cf6',fg:'#ffffff',brd:'#8b5cf6'},
+  {bg:'#06b6d4',fg:'#ffffff',brd:'#06b6d4'},
+  {bg:'#a16207',fg:'#ffffff',brd:'#a16207'},
+  {bg:'#be185d',fg:'#ffffff',brd:'#be185d'},
+  {bg:'#fbcfe8',fg:'#831843',brd:'#f9a8d4'},
+  {bg:'#bbf7d0',fg:'#14532d',brd:'#86efac'},
+  {bg:'#bae6fd',fg:'#0c4a6e',brd:'#7dd3fc'},
+  {bg:'#fed7aa',fg:'#7c2d12',brd:'#fdba74'}
 ];
 
 // ── STATE ────────────────────────────────────────────────────
@@ -557,13 +573,13 @@ function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.col
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
 function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
-function defaultTypeForPerson(pid){var g=(pinfo(pid).g||'').toUpperCase(); for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]) return g; return 'P';}
+function defaultTypeForPerson(pid){var p=pinfo(pid); var dt=(p.defaultType||'').toUpperCase(); if(dt&&tinfo(dt)&&tinfo(dt).id===dt) return dt; var g=(p.g||'').toUpperCase(); if(g==='B') return 'B'; for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]) return g; return 'P';}
 
-function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'Atelier',F:'Finition',T:'Transport',P:'Pose'}; return m[g]||g||'';}
+function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'Atelier',F:'Finition',T:'Transport',P:'Pose',B:'Bureau'}; return m[g]||g||'';}
 function activePeople(){return PERS.filter(function(p){return p && p.active!==false;});}
 function archivedPeople(){return PERS.filter(function(p){return p && p.active===false;});}
-function sortPeople(){var pos={}; PERSON_ORDER.forEach(function(id,idx){pos[id]=idx;}); var groupOrder={M:1,A:2,F:3,T:4,P:5}; PERS.sort(function(a,b){var aa=(a&&a.active!==false)?0:1, bb=(b&&b.active!==false)?0:1; if(aa!==bb) return aa-bb; var pa=(pos[a.id]!==undefined)?pos[a.id]:999, pb=(pos[b.id]!==undefined)?pos[b.id]:999; if(pa!==pb) return pa-pb; var ag=groupOrder[(a.g||'').toUpperCase()]||99, bg=groupOrder[(b.g||'').toUpperCase()]||99; if(ag!==bg) return ag-bg; return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});});}
-function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(!GCOL[g]||NOCH[g]) g='P'; var id=p.id||('pers_'+i+'_'+Date.now().toString(36)); var nom=String(p.nom||('Personne '+(i+1))).trim(); if(id==='marco_t'&&nom==='Marco T.') nom='Marco'; return {id:id, nom:nom, g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), active:p.active!==false};}
+function sortPeople(){var pos={}; PERSON_ORDER.forEach(function(id,idx){pos[id]=idx;}); var groupOrder={M:1,A:2,F:3,T:4,P:5,B:6}; PERS.sort(function(a,b){var aa=(a&&a.active!==false)?0:1, bb=(b&&b.active!==false)?0:1; if(aa!==bb) return aa-bb; var pa=(pos[a.id]!==undefined)?pos[a.id]:999, pb=(pos[b.id]!==undefined)?pos[b.id]:999; if(pa!==pb) return pa-pb; var ag=groupOrder[(a.g||'').toUpperCase()]||99, bg=groupOrder[(b.g||'').toUpperCase()]||99; if(ag!==bg) return ag-bg; return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});});}
+function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(g!=='B'&&(!GCOL[g]||NOCH[g])) g='P'; var id=p.id||('pers_'+i+'_'+Date.now().toString(36)); var nom=String(p.nom||('Personne '+(i+1))).trim(); if(id==='marco_t'&&nom==='Marco T.') nom='Marco'; var dt=String(p.defaultType||'').toUpperCase(); if(dt&&!(tinfo(dt)&&tinfo(dt).id===dt)) dt=''; return {id:id, nom:nom, g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), defaultType:dt, active:p.active!==false};}
 function makePersonId(name){return 'pers_'+String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,18)+'_'+Date.now().toString(36).slice(-4);}
 function manualSave(label){lsSave(); fbSave(); updateStatusBar(); toast((label||'Données')+' sauvegardé');}
 function weekChantierCatalog(){
@@ -836,6 +852,63 @@ function savePointageDay(pid,di,day,historyText,before,after){
   if(historyText) addHistoryEntry(historyText,before,after);
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
 }
+// ── SYNCHRO POINTAGE → PLANNING (Option C) ───────────────────
+function pointageDayToTasks(pid,di){
+  var day=getPointageDay(pid,di); var tasks=[];
+  (day.items||[]).forEach(function(it){
+    var h=roundQuarter(it.h); if(h<=0) return;
+    tasks.push(sanitizeTask({type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+  });
+  var dft=defaultTypeForPerson(pid);
+  (day.extras||[]).forEach(function(it){
+    var h=roundQuarter(it.h); if(h<=0) return;
+    if(!String(it.num||'').trim()&&!String(it.nom||'').trim()) return;
+    tasks.push(sanitizeTask({type:dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+  });
+  return tasks;
+}
+function applyPointageToPlanning(pid,di){
+  var day=getPointageDay(pid,di);
+  if(!day||!day.pointed) return false; // only pointed days replace planning
+  var tasks=pointageDayToTasks(pid,di);
+  return setDayTasks(pid,di,tasks,{skipUndo:false,undoLabel:'Synchro pointage → planning'});
+}
+function validatePointagePerson(pid){
+  var n=0;
+  for(var di=0;di<6;di++){ if(applyPointageToPlanning(pid,di)) n++; }
+  lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  if(currentTab==='planning') renderPlanning();
+  toast(n?('Planning mis à jour — '+pinfo(pid).nom+' ('+n+' jour'+(n>1?'s':'')+')'):'Aucun pointage à reporter');
+}
+function validatePointageAll(){
+  if(!confirm('Reporter le pointage validé de TOUT le personnel dans le planning de la semaine ?\n\nLes jours pointés remplaceront le planning. Les jours non pointés restent intacts.')) return;
+  var total=0, people=0;
+  activePeople().forEach(function(p){
+    var n=0; for(var di=0;di<6;di++){ if(applyPointageToPlanning(p.id,di)) n++; }
+    if(n){people++; total+=n;}
+  });
+  lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage();
+  toast(total?('Planning mis à jour : '+people+' personne'+(people>1?'s':'')+', '+total+' jour'+(total>1?'s':'')):'Aucun pointage à reporter');
+}
+// Auto-sync at 16h (only fires if a device has the app open)
+var _lastAutoSyncDate='';
+function checkAutoSync(){
+  try{
+    var now=new Date();
+    if(now.getHours()===16 && now.getMinutes()===0){
+      var stamp=now.toISOString().slice(0,10);
+      if(_lastAutoSyncDate===stamp) return;
+      _lastAutoSyncDate=stamp;
+      if(!isManager()) return; // only a manager session performs the write
+      var di=(now.getDay()+6)%7; if(di>5) return; // Mon..Sat only
+      var n=0;
+      activePeople().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
+      if(n){lsSave(); fbSave(); updateStatusBar(); if(currentTab==='planning') renderPlanning(); toast('Auto-synchro 16h : '+n+' pointage(s) reporté(s)');}
+    }
+  }catch(e){}
+}
+setInterval(checkAutoSync,30000);
 
 // ── LOGIN ────────────────────────────────────────────────────
 function selectRole(r){
@@ -1305,12 +1378,13 @@ function renderPointage(){
     html+='<div class="pillbar">';
     activePeople().forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="ptSelPers=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
     html+='</div>';
+    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">✓ Reporter tout le pointage validé au planning</button> <span style="font-size:12px;color:#64748b">Auto-synchro chaque jour à 16h si un appareil est ouvert.</span></div>';
     html+=pointageDetailHtml(selId);
   } else html=pointageDetailHtml(userId);
   el.innerHTML=html;
 }
 function pointageDetailHtml(pid){
-  var p=pinfo(pid), col=tcol(p.g), html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">Pointage semaine '+isoWeek(wkMon)+'</div></div><div class="summary-actions"><button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
+  var p=pinfo(pid), col=tcol(p.g), html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">Pointage semaine '+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+(isManager()?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">✓ Reporter au planning</button>':'')+'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -1324,7 +1398,7 @@ function pointageDetailHtml(pid){
         +'<div class="pt-info">'
         +'<div class="pt-topline"><b>'+label+'</b></div>'
         +'</div>'
-        +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',false,-0.25)">−</button><div class="hval">'+fmtHShort(it.h)+'</div><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',false,0.25)">+</button></div>'
+        +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',false,-0.25)">−</button><input class="hval hval-input" type="number" step="0.25" min="0" value="'+it.h+'" onchange="setPointageHours(\''+pid+'\','+di+','+idx+',false,this.value)" onfocus="focusedExtraField=\'pth-'+pid+'-'+di+'-'+idx+'\';this.id=\'pth-'+pid+'-'+di+'-'+idx+'\'" onblur="focusedExtraField=null"/><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',false,0.25)">+</button></div>'
         +'</div>';
     });
 
@@ -1337,7 +1411,7 @@ function pointageDetailHtml(pid){
         +'<input id="extra-num-'+pid+'-'+di+'-'+idx+'" placeholder="N°" value="'+(it.num||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'num\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
         +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Client / libellé" value="'+(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
         +'</div><span class="pt-planned">Chantier imprévu : choisissez un chantier existant ou encodez un nouveau numéro et descriptif.</span></div>'
-        +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><div class="hval">'+fmtHShort(it.h)+'</div><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
+        +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><input class="hval hval-input" type="number" step="0.25" min="0" value="'+it.h+'" onchange="setPointageHours(\''+pid+'\','+di+','+idx+',true,this.value)" onfocus="focusedExtraField=\'pthx-'+pid+'-'+di+'-'+idx+'\';this.id=\'pthx-'+pid+'-'+di+'-'+idx+'\'" onblur="focusedExtraField=null"/><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
         +'<button class="mini-btn" style="color:#dc2626" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
         +'</div>';
     });
@@ -1352,13 +1426,18 @@ function pointageDetailHtml(pid){
 }
 function adjustPointage(pid,di,idx,isExtra,delta){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
-  var before=clone(day); arr[idx].h=Math.max(0,roundQuarter((parseFloat(arr[idx].h)||0)+delta));
+  var before=clone(day); arr[idx].h=Math.max(0,roundQuarter((parseFloat(arr[idx].h)||0)+delta)); day.pointed=true;
   savePointageDay(pid,di,day,'Pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
 }
-function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({num:'',nom:'',h:0}); savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
-function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
-function setExtraField(pid,di,idx,f,v){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; day.extras[idx][f]=v; savePointageDay(pid,di,day,null);}
-function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
+function setPointageHours(pid,di,idx,isExtra,v){
+  var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
+  var before=clone(day); arr[idx].h=Math.max(0,roundQuarter(parseFloat(String(v).replace(',','.'))||0)); day.pointed=true;
+  savePointageDay(pid,di,day,'Pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
+}
+function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({num:'',nom:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function setExtraField(pid,di,idx,f,v){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; day.extras[idx][f]=v; day.pointed=true; savePointageDay(pid,di,day,null);}
+function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; day.pointed=true; savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
 
 
 // ── SETTINGS ─────────────────────────────────────────────────
@@ -1403,10 +1482,11 @@ function renderSettings(){
   html+=`<button class="add-btn" onclick="addChefUser('chef')">+ Ajouter un chef</button></div>`;
 
   html+=`<div class="setting-box"><h3>Personnel</h3><p>Ajoutez un nom dans une section, mettez à jour le n° GSM, archivez un nom sans perdre l'historique et définissez le PIN GSM.</p>`;
-  html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button></div>`;
+  html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button><button onclick="addPersonToGroup('B')">+ Bureau</button></div>`;
   active.forEach(function(p){
-    var col=tcol(p.g); var opts=['M','A','F','T','P'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
-    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:${col}">${escAttr(p.nom||'?').charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" /><span class="pin-tag">${personPins[p.id]?'PIN défini':'À créer'}</span><div class="person-tools"><button class="mini-btn" onclick="openPinModal('pers','${p.id}')">${personPins[p.id]?'Changer PIN':'Définir PIN'}</button><button class="mini-btn" onclick="resetPersonPin('${p.id}')">Réinit. PIN</button><button class="mini-btn" style="color:#dc2626" onclick="archivePerson('${p.id}')">Archiver</button></div></div></div>`;
+    var col=tcol(p.g); var opts=['M','A','F','T','P','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
+    var dtOpts='<option value="">Type auto ('+sectionLabel(p.g)+')</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
+    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:${col}">${escAttr(p.nom||'?').charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" /><span class="pin-tag">${personPins[p.id]?'PIN défini':'À créer'}</span><div class="person-tools"><button class="mini-btn" onclick="openPinModal('pers','${p.id}')">${personPins[p.id]?'Changer PIN':'Définir PIN'}</button><button class="mini-btn" onclick="resetPersonPin('${p.id}')">Réinit. PIN</button><button class="mini-btn" style="color:#dc2626" onclick="archivePerson('${p.id}')">Archiver</button></div></div></div>`;
   });
   html+=`</div>`;
 
@@ -1447,6 +1527,7 @@ function resetChefPin(id){var c=chefInfo(id); if(!c) return; if(c.role==='admin'
 function addPersonToGroup(group){var nom=prompt('Nom de la personne à ajouter dans '+sectionLabel(group)+' :',''); if(!nom) return; var gsm=prompt('N° de GSM (optionnel) :','')||''; var p=normalizePerson({id:makePersonId(nom),nom:nom,g:group,poste:sectionLabel(group),gsm:gsm,active:true},PERS.length); PERS.push(p); sortPeople(); addHistoryEntry('Ajout personnel : '+p.nom+' — '+sectionLabel(group),null,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast('Personne ajoutée');}
 function updatePersonField(pid,field,value){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p[field]=String(value||'').trim(); if(field==='nom'&&!p[field]){toast('Le nom ne peut pas être vide'); p[field]=before[field]; renderSettings(); return;} addHistoryEntry('Mise à jour personnel : '+before.nom+' — '+field,before,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
 function updatePersonSection(pid,g){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.g=String(g||'P').toUpperCase(); p.poste=sectionLabel(p.g); sortPeople(); addHistoryEntry('Changement de section : '+before.nom+' → '+sectionLabel(p.g),before,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
+function updatePersonDefaultType(pid,t){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); t=String(t||'').toUpperCase(); if(t&&!(tinfo(t)&&tinfo(t).id===t)) t=''; p.defaultType=t; addHistoryEntry('Type par défaut : '+p.nom+' → '+(t?tinfo(t).lbl:'auto'),before,p); lsSave(); fbSave(); renderSettings(); updateStatusBar();}
 function archivePerson(pid){var p=pinfo(pid); if(!p||!p.id) return; if(!confirm('Archiver '+p.nom+' ?')) return; var before=clone(p); p.active=false; addHistoryEntry('Archivage personnel : '+p.nom,before,p); if(ptSelPers===pid) ptSelPers=(activePeople()[0]&&activePeople()[0].id)||null; lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
 function restorePerson(pid){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=true; sortPeople(); addHistoryEntry('Réactivation personnel : '+p.nom,before,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
 function resetPersonPin(pid){var p=pinfo(pid); if(!p||!p.id) return; if(!confirm('Supprimer le PIN GSM de '+p.nom+' ?')) return; var before=personPins[pid]||null; delete personPins[pid]; addHistoryEntry('Réinitialisation PIN personnel : '+p.nom,before,null); lsSave(); fbSave(); renderSettings(); toast('PIN personnel supprimé');}
