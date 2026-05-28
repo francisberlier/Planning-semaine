@@ -149,7 +149,15 @@ input,select{font-size:14px}
 .setting-row .meta{flex:1}
 .setting-row .meta b{display:block;font-size:13px}
 .setting-row .meta span{font-size:11px;color:#64748b}
-.person-editor{display:grid;grid-template-columns:minmax(140px,1.1fr) 120px 130px 130px auto auto;gap:8px;align-items:center;flex:1;min-width:0}
+.person-editor{display:grid;grid-template-columns:minmax(130px,1.1fr) 110px 120px 110px auto auto;gap:8px;align-items:center;flex:1;min-width:0}
+.toggle-active{display:inline-flex;align-items:center;gap:7px;border:none;border-radius:999px;padding:5px 12px 5px 6px;font-size:12px;font-weight:800;cursor:pointer;transition:all .18s;white-space:nowrap}
+.toggle-active .knob{width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.toggle-active.on{background:#16a34a;color:#fff}
+.toggle-active.off{background:#cbd5e1;color:#475569}
+.toggle-active.off .knob{background:#f1f5f9}
+.toggle-active:hover{filter:brightness(.95)}
+.row-inactive{opacity:.55}
+.row-inactive .person-editor input,.row-inactive .person-editor select{background:#f1f5f9}
 .person-editor input,.person-editor select{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;font-size:12px;width:100%;background:#fff}
 .person-tools{display:flex;gap:8px;flex-wrap:wrap}
 .setting-addbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
@@ -1404,13 +1412,15 @@ function renderSettings(){
   });
   html+=`<button class="add-btn" onclick="addChefUser('chef')">+ Ajouter un chef</button></div>`;
 
-  html+=`<div class="setting-box"><h3>Personnel</h3><p>Ajoutez un nom dans une section, modifiez la section, le numéro de GSM et le PIN de chaque personne.</p>`;
+  html+=`<div class="setting-box"><h3>Personnel</h3><p>Ajoutez un nom dans une section, modifiez la section, le n° GSM, le type par défaut et le PIN. L'interrupteur <b>Actif/Inactif</b> masque une personne du planning et du pointage sans perdre ses données.</p>`;
   html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button><button onclick="addPersonToGroup('B')">+ Bureau</button></div>`;
   PERS.forEach(function(p){
+    var on=p.active!==false;
     var col=tcol(p.g);
     var opts=['M','A','F','T','P','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
     var dtOpts='<option value="">Type auto ('+sectionLabel(p.g)+')</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
-    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:${col}">${p.nom.charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" /><span class="pin-tag">${personPins[p.id]?'PIN défini':'À créer'}</span><div class="person-tools"><button class="mini-btn" onclick="openPinModal('pers','${p.id}')">${personPins[p.id]?'Changer PIN':'Définir PIN'}</button></div></div></div>`;
+    var toggle='<button class="toggle-active '+(on?'on':'off')+'" onclick="togglePersonActive(\''+p.id+'\')" title="'+(on?'Actif':'Inactif')+'"><span class="knob"></span><span class="lbl">'+(on?'Actif':'Inactif')+'</span></button>';
+    html+=`<div class="setting-row${on?'':' row-inactive'}"><div class="user-avatar-sm" style="background:${col}">${p.nom.charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" />${toggle}<div class="person-tools"><button class="mini-btn" onclick="openPinModal('pers','${p.id}')">${personPins[p.id]?'PIN':'Définir PIN'}</button></div></div></div>`;
   });
   html+=`</div>`;
   el.innerHTML=html;
@@ -1459,6 +1469,7 @@ function updatePersonSection(pid,g){
   lsSave(); fbSave(); renderSettings(); buildUserList(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();
 }
 function updatePersonDefaultType(pid,t){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); t=String(t||'').toUpperCase(); if(t&&!(tinfo(t)&&tinfo(t).id===t)) t=''; p.defaultType=t; addHistoryEntry('Type par défaut : '+p.nom+' → '+(t?tinfo(t).lbl:'auto'),before,p); lsSave(); fbSave(); renderSettings(); updateStatusBar();}
+function togglePersonActive(pid){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=(p.active===false); sortPeople(); addHistoryEntry((p.active?'Activation':'Désactivation')+' personnel : '+p.nom,before,p); lsSave(); fbSave(); renderSettings(); buildUserList(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast(p.nom+(p.active?' activé':' désactivé'));}
 
 // ── PIN MODAL ────────────────────────────────────────────────
 function pmLen(){return (pinEditTarget&&pinEditTarget.kind==='chef')?CHEF_PIN_LENGTH:PIN_LENGTH;}
