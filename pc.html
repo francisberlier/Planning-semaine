@@ -24,7 +24,7 @@ input,select{font-size:14px}
 .login-sub{color:rgba(255,255,255,.7);font-size:13px;margin-bottom:28px}
 .login-card{background:#fff;border-radius:18px;padding:22px;width:100%;max-width:360px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
 .login-card h3{font-size:15px;font-weight:700;color:var(--bleu);margin-bottom:14px;text-align:center}
-.role-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.role-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
 .role-btn{padding:14px 6px;border-radius:10px;border:2px solid var(--bd);background:#fff;font-size:12px;font-weight:700;color:#64748b;text-align:center;transition:all .2s}
 .role-btn.active{border-color:var(--bleu2);background:#eff6ff;color:var(--bleu2)}
 .role-btn .icon{font-size:26px;display:block;margin-bottom:4px}
@@ -149,7 +149,7 @@ input,select{font-size:14px}
 }
 
 /* Settings/export */
-.setting-box{padding:14px 16px}
+.setting-box{padding:14px 16px;flex-shrink:0}
 .setting-box h3{font-size:14px;color:var(--bleu);margin-bottom:8px}
 .setting-box p{font-size:12px;color:#64748b;line-height:1.45;margin-bottom:10px}
 .setting-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f1f5f9;flex-wrap:wrap}
@@ -167,6 +167,8 @@ input,select{font-size:14px}
 .archive-tag{font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;border:1px solid #fecaca;background:#fff1f2;color:#b91c1c}
 .mini-btn{padding:6px 10px;border-radius:8px;border:1px solid var(--bd);background:#fff;font-size:11px;font-weight:700}
 .main-btn{width:100%;padding:13px;border-radius:10px;border:none;background:var(--bleu);color:#fff;font-weight:700;font-size:14px;margin-bottom:8px}
+.add-btn{display:inline-flex;align-items:center;gap:4px;padding:7px 14px;border-radius:8px;border:1.5px dashed #94a3b8;background:#f8fafc;color:var(--bleu);font-weight:700;font-size:12px;cursor:pointer;margin-top:8px}
+.add-btn:hover{background:#eff6ff;border-color:var(--bleu2);border-style:solid}
 .secondary-btn{width:100%;padding:13px;border-radius:10px;border:2px dashed #94a3b8;background:#f8fafc;color:#64748b;font-weight:700;font-size:14px;margin-bottom:8px}
 
 /* Modals */
@@ -259,8 +261,6 @@ input,select{font-size:14px}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div id="login-screen">
@@ -268,19 +268,26 @@ input,select{font-size:14px}
   <div class="login-title">Verbruggen</div>
   <div class="login-sub">Planning &amp; Pointage</div>
   <div class="login-card">
-    <h3>Connexion sécurisée</h3>
-    <div class="login-form">
-      <label class="login-label" for="login-email">Adresse e-mail</label>
-      <input class="login-input" id="login-email" type="email" autocomplete="username" placeholder="votre@adresse.be" onkeydown="loginHandleKey(event)"/>
-      <label class="login-label" for="login-password">Mot de passe</label>
-      <input class="login-input" id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" onkeydown="loginHandleKey(event)"/>
-      <div class="login-msg" id="login-msg"></div>
-      <button class="btn-login" id="btn-login" onclick="doLogin()">Se connecter</button>
+    <h3>Qui êtes-vous ?</h3>
+    <div class="role-btns">
+      <div class="role-btn" id="btn-admin" onclick="selectRole('admin')"><span class="icon">👑</span>Admin</div>
+      <div class="role-btn" id="btn-chef" onclick="selectRole('chef')"><span class="icon">👔</span>Chef</div>
+      <div class="role-btn" id="btn-pers" onclick="selectRole('personnel')"><span class="icon">👷</span>Personnel</div>
     </div>
-    <div class="login-help">Les rôles <b>admin</b>, <b>chef</b> et <b>personnel</b> sont lus automatiquement dans Firebase.</div>
-    <div class="login-help">Pour un compte <b>personnel</b>, ajoutez aussi un <b>personId</b> dans Firestore (ou comme custom claim) pour relier le compte à la bonne personne.</div>
+    <div id="chef-select-wrap" style="display:none;margin-bottom:14px">
+      <select id="chef-select" onchange="onChefSelect(this.value)" style="width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:15px;font-weight:700;color:var(--bleu);background:#fff"></select>
+    </div>
+    <div id="user-list"></div>
+    <div id="pin-section">
+      <div class="pin-display">
+        <div class="pin-dot" id="ld0"></div><div class="pin-dot" id="ld1"></div><div class="pin-dot" id="ld2"></div><div class="pin-dot" id="ld3"></div><div class="pin-dot" id="ld4"></div><div class="pin-dot" id="ld5"></div>
+      </div>
+      <div class="pin-pad" id="login-pin-pad"></div>
+      <div class="pin-error" id="login-pin-error"></div>
+      <div class="pin-hint" id="login-pin-hint"></div>
+    </div>
+    <button class="btn-login" id="btn-login" onclick="doLogin()" disabled>Entrer</button>
   </div>
-  <button onclick="doResetAllPins()" style="margin-top:16px;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.35);color:#fff;border-radius:10px;padding:10px 22px;font-size:12px;font-weight:700;cursor:pointer;">🔑 Réinitialiser tous les PIN</button>
 </div>
 
 <div id="app">
@@ -292,6 +299,7 @@ input,select{font-size:14px}
       <button onclick="chWk(1)">▶</button>
     </div>
     <span id="fb-status" title="Firebase" style="font-size:12px">🔴</span>
+    <button onclick="doHardReload()" title="Recharger l'application (vide le cache)" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer;font-weight:600">🔄</button>
     <div id="user-badge" onclick="logout()">👤 <span id="user-name-hdr"></span> · Déco</div>
   </div>
   <div id="tabs"></div>
@@ -324,7 +332,7 @@ input,select{font-size:14px}
     <h3 id="pm-title">Définir un PIN</h3>
     <div id="pm-hint"></div>
     <div class="pin-modal-display">
-      <div class="pm-dot" id="pd0"></div><div class="pm-dot" id="pd1"></div><div class="pm-dot" id="pd2"></div><div class="pm-dot" id="pd3"></div><div class="pm-dot" id="pd4"></div>
+      <div class="pm-dot" id="pd0"></div><div class="pm-dot" id="pd1"></div><div class="pm-dot" id="pd2"></div><div class="pm-dot" id="pd3"></div><div class="pm-dot" id="pd4"></div><div class="pm-dot" id="pd5"></div>
     </div>
     <div id="pm-pad"></div>
     <div id="pm-error"></div>
@@ -348,58 +356,8 @@ input,select{font-size:14px}
 <script>
 // ── FIREBASE ─────────────────────────────────────────────────
 var db=null, fbConnected=false, auth=null, fs=null;
-var authUid=null, authEmail='', authClaimRole='', authProfile=null;
 var dataRef=null, dataListener=null;
 
-function setLoginMessage(msg,type){
-  var el=document.getElementById('login-msg');
-  if(!el) return;
-  el.textContent=msg||'';
-  el.className='login-msg'+(type?' '+type:'');
-}
-function showLoginScreen(){
-  document.getElementById('login-screen').classList.remove('hidden');
-  document.getElementById('app').classList.remove('show');
-  var pwd=document.getElementById('login-password');
-  if(pwd) pwd.value='';
-}
-function hideLoginScreen(){
-  document.getElementById('login-screen').classList.add('hidden');
-  document.getElementById('app').classList.add('show');
-}
-function firebaseErrorMessage(err){
-  var code=err&&err.code?String(err.code):'';
-  var map={
-    'auth/invalid-email':'Adresse e-mail invalide.',
-    'auth/user-disabled':'Ce compte est désactivé.',
-    'auth/user-not-found':'Compte introuvable.',
-    'auth/wrong-password':'Mot de passe incorrect.',
-    'auth/invalid-credential':'Adresse e-mail ou mot de passe incorrect.',
-    'auth/too-many-requests':'Trop d’essais. Réessayez plus tard.',
-    'auth/network-request-failed':'Erreur réseau. Vérifiez la connexion internet.'
-  };
-  return map[code] || (err&&err.message) || 'Connexion impossible.';
-}
-function normalizeFirebaseRole(r){
-  r=String(r||'').toLowerCase().trim();
-  return (r==='admin'||r==='chef'||r==='personnel') ? r : '';
-}
-async function loadUserProfile(uid){
-  var out={displayName:'', email:'', active:true, personId:'', role:''};
-  if(!fs||!uid) return out;
-  try{
-    var snap=await fs.collection('users').doc(uid).get();
-    if(snap.exists){
-      var d=snap.data()||{};
-      if(d.displayName) out.displayName=String(d.displayName);
-      if(d.email) out.email=String(d.email);
-      if(d.active===false) out.active=false;
-      if(d.personId) out.personId=String(d.personId);
-      if(d.role) out.role=String(d.role);
-    }
-  }catch(e){console.warn('Firestore user profile error',e);}
-  return out;
-}
 function applyChantierColorToWeek(num,idxColor){
   num=String(num||'').trim();
   if(!num) return;
@@ -459,82 +417,29 @@ function initFirebase(){
     };
     if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     db=firebase.database();
-    auth=firebase.auth();
-    fs=firebase.firestore();
     db.ref('.info/connected').on('value', function(snap){
       fbConnected=snap.val()===true;
       var badge=document.getElementById('fb-status');
       if(badge){badge.textContent=fbConnected?'🟢':'🔴';badge.title=fbConnected?'Firebase connecté':'Hors ligne';}
     });
-    auth.onAuthStateChanged(async function(user){
-      try{
-        if(!user){
-          stopDataListener();
-          authUid=null; authEmail=''; authClaimRole=''; authProfile=null;
-          role=null; userId=null; dayClipboard=null;
-          showLoginScreen();
-          updateStatusBar();
-          return;
-        }
-        setLoginMessage('Connexion en cours…','info');
-        authUid=user.uid;
-        authEmail=user.email||'';
-        var token=await user.getIdTokenResult(true);
-        var profile=await loadUserProfile(user.uid);
-        if(profile.active===false) throw new Error('Ce compte est désactivé.');
-        authClaimRole=normalizeFirebaseRole((token&&token.claims&&token.claims.role)||profile.role);
-        if(!authClaimRole) throw new Error('Aucun rôle Firebase n’a été trouvé pour ce compte.');
-        authProfile=profile||{};
-        if(!authProfile.displayName) authProfile.displayName=(authEmail||'').split('@')[0] || 'Utilisateur';
-        if(!authProfile.email) authProfile.email=authEmail||'';
-        if(authClaimRole==='personnel'){
-          var personId=(token&&token.claims&&token.claims.personId)?String(token.claims.personId):String(profile.personId||'');
-          if(!personId) throw new Error('Ce compte personnel n’est pas encore relié à une personne. Ajoutez un personId dans Firestore/users/'+authUid+'.');
-          authProfile.personId=personId;
-          role='personnel';
-          userId=personId;
-        }else{
-          role='chef';
-          userId=authUid;
-        }
-        startDataListener();
-        hideLoginScreen();
-        initApp();
-        setLoginMessage('');
-      }catch(e){
-        console.error('Auth bootstrap error',e);
-        setLoginMessage(firebaseErrorMessage(e),'error');
-        try{await auth.signOut();}catch(_){}
-      }
-    });
+    startDataListener();
   }catch(e){
     console.warn('Firebase init error',e);
-    setLoginMessage('Erreur Firebase : '+firebaseErrorMessage(e),'error');
   }
 }
 function fbSave(){
-  if(!db||!fbConnected||!auth||!auth.currentUser) return;
+  if(!db||!fbConnected) return;
   ignoreRemoteUntil=Date.now()+1500;
   try{
-    if(role==='chef'){
-      db.ref('data').set({
-        planning:planning,
-        pointage:pointage,
-        cColorOverride:cColorOverride,
-        people:PERS,
-        personPins:personPins,
-        chefUsers:chefUsers,
-        meta:appMeta
-      });
-      return;
-    }
-    if(role==='personnel'&&userId){
-      var updates={'data/meta':appMeta};
-      Object.keys(pointage||{}).forEach(function(w){
-        updates['data/pointage/'+w+'/'+userId]=(pointage[w]&&pointage[w][userId])?pointage[w][userId]:null;
-      });
-      db.ref().update(updates);
-    }
+    db.ref('data').set({
+      planning:planning,
+      pointage:pointage,
+      cColorOverride:cColorOverride,
+      people:PERS,
+      personPins:personPins,
+      chefUsers:chefUsers,
+      meta:appMeta
+    });
   }catch(e){console.warn('Firebase save error',e);}
 }
 function fbListen(){
@@ -542,8 +447,9 @@ function fbListen(){
 }
 // ── CONSTANTS ────────────────────────────────────────────────
 var PIN_LENGTH=5;
-var DEFAULT_CHEF_PIN='12345';
-var DEFAULT_CHEF_USERS=[{id:'chef_main', nom:'Chef principal', pin:DEFAULT_CHEF_PIN}];
+var CHEF_PIN_LENGTH=6;
+var DEFAULT_CHEF_PIN='123456';
+var DEFAULT_CHEF_USERS=[{id:'chef_main', nom:'Chef principal', pin:DEFAULT_CHEF_PIN, role:'admin'}];
 
 var DEFAULT_PERS=[
   {id:'david',nom:'David',g:'M',poste:'Numerique',gsm:''},
@@ -637,14 +543,14 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function sameJSON(a,b){return JSON.stringify(a==null?null:a)===JSON.stringify(b==null?null:b);}
-function padPin(v){v=String(v||'').replace(/\D/g,'');return v.slice(0,PIN_LENGTH);}
+function padPin(v,len){v=String(v||'').replace(/\D/g,'');return v.slice(0,len||PIN_LENGTH);}
+function pinLen(){return (role==='admin'||role==='chef')?CHEF_PIN_LENGTH:PIN_LENGTH;}
 function fmtH(v){v=roundQuarter(v);var s=v.toFixed(2).replace('.',',');s=s.replace(/,00$/,'').replace(/(,\d)0$/,'$1');return s+' h';}
 function fmtHShort(v){return fmtH(v).replace(' ','');}
 function ensureMeta(meta){meta=meta||{};return {lastModifiedAt:meta.lastModifiedAt||null,lastModifiedBy:meta.lastModifiedBy||'',history:Array.isArray(meta.history)?meta.history:[]};}
 function currentDisplayName(){
-  if(authProfile&&authProfile.displayName) return authProfile.displayName;
+  if(isManager()&&userId){var c=chefInfo(userId); if(c) return c.nom;}
   if(role==='personnel'&&userId) return pinfo(userId).nom;
-  if(authEmail) return authEmail;
   return 'Système';
 }
 function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.colorIdx==null?'':t.colorIdx].join('|');}
@@ -744,8 +650,8 @@ function updateStatusBar(){
     else if(dayClipboard&&dayClipboard.mode==='day'&&dayClipboard.tasks&&dayClipboard.tasks.length) sc.textContent='📋 Presse-papiers : '+(dayClipboard.label||'journée copiée')+' — cliquez une autre date pour coller';
     else sc.textContent='📋 Presse-papiers : vide';
   }
-  if(hb) hb.style.display=(role==='chef'&&userId)?'inline-flex':'none';
-  if(ub){ub.style.display=(role==='chef'&&userId)?'inline-flex':'none'; ub.disabled=!undoStack.length; ub.style.opacity=undoStack.length?'1':'.45';}
+  if(hb) hb.style.display=(isManager()&&userId)?'inline-flex':'none';
+  if(ub){ub.style.display=(isManager()&&userId)?'inline-flex':'none'; ub.disabled=!undoStack.length; ub.style.opacity=undoStack.length?'1':'.45';}
 }
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');setTimeout(function(){el.classList.remove('on');},2500);}
 function getPlanningScrollState(){
@@ -780,14 +686,6 @@ function restoreEditorScrollState(state){
 }
 
 // ── STORAGE ──────────────────────────────────────────────────
-function doResetAllPins(){
-  if(!confirm('Réinitialiser TOUS les PIN ?\n\nLe PIN chef redeviendra 12345.\nTous les PIN du personnel seront supprimés.\n\nContinuer ?')) return;
-  chefUsers=chefUsers.map(function(c){return Object.assign({},c,{pin:'12345'});});
-  personPins={};
-  try{lsSave();}catch(e){}
-  try{fbSave();}catch(e){}
-  alert('✅ PIN réinitialisés !\n\nPIN chef : 12345\nPersonnel : chaque personne devra créer un nouveau PIN à la première connexion.');
-}
 function lsSave(){
   try{
     localStorage.setItem('vb_plan_v7',JSON.stringify(planning));
@@ -813,6 +711,18 @@ function lsLoad(){
     var m=localStorage.getItem('vb_meta_v7')||localStorage.getItem('vb_meta'); if(m) appMeta=ensureMeta(JSON.parse(m));
   }catch(e){}
 }
+function doHardReload(){
+  if(!confirm('Recharger l\'application pour récupérer la dernière version ?\n\nVos données ne seront pas perdues (elles sont sur Firebase).')) return;
+  if('caches' in window){
+    caches.keys().then(function(keys){
+      keys.forEach(function(k){caches.delete(k);});
+    }).finally(function(){
+      window.location.reload(true);
+    });
+  } else {
+    window.location.reload(true);
+  }
+}
 function lsSaveSession(){try{localStorage.setItem('vb_session_v7',JSON.stringify({role:role,userId:userId}));}catch(e){}}
 function lsLoadSession(){try{var s=localStorage.getItem('vb_session_v7')||localStorage.getItem('vb_session');return s?JSON.parse(s):null;}catch(e){return null;}}
 
@@ -822,10 +732,21 @@ function migrateState(){
   PERS=PERS.map(function(p,i){return normalizePerson(p,i);});
   sortPeople();
   if(!Array.isArray(chefUsers)||!chefUsers.length) chefUsers=clone(DEFAULT_CHEF_USERS);
-  chefUsers=chefUsers.map(function(c,i){return {id:c.id||('chef_'+i),nom:String(c.nom||('Chef '+(i+1))),pin:padPin(c.pin||DEFAULT_CHEF_PIN)};});
-  Object.keys(personPins||{}).forEach(function(k){personPins[k]=padPin(personPins[k]);});
+  chefUsers=chefUsers.map(function(c,i){
+    var r=(c.role==='admin'||c.role==='chef')?c.role:(i===0?'admin':'chef');
+    var p=padPin(c.pin||'',CHEF_PIN_LENGTH);
+    if(p.length!==CHEF_PIN_LENGTH) p=DEFAULT_CHEF_PIN; // 5-digit legacy PINs reset to 6-digit default
+    return {id:c.id||('chef_'+i),nom:String(c.nom||('Chef '+(i+1))),pin:p,role:r};
+  });
+  // Ensure at least one admin exists
+  if(!chefUsers.some(function(c){return c.role==='admin';})) chefUsers[0].role='admin';
+  Object.keys(personPins||{}).forEach(function(k){personPins[k]=padPin(personPins[k],PIN_LENGTH);});
   appMeta=ensureMeta(appMeta);
 }
+function chefRole(id){var c=chefInfo(id); return c?(c.role||'chef'):'';}
+function adminCount(){return chefUsers.filter(function(c){return c.role==='admin';}).length;}
+function isAdmin(){return role==='admin';}
+function isManager(){return role==='admin'||role==='chef';}
 function cleanupPlanningPath(w,pid,di){
   if(planning[w]&&planning[w][pid]&&planning[w][pid][di]&&Object.keys(planning[w][pid][di]).length===0) delete planning[w][pid][di];
   if(planning[w]&&planning[w][pid]&&Object.keys(planning[w][pid]).length===0) delete planning[w][pid];
@@ -917,40 +838,118 @@ function savePointageDay(pid,di,day,historyText,before,after){
 }
 
 // ── LOGIN ────────────────────────────────────────────────────
-function loginHandleKey(ev){
-  if(ev&&ev.key==='Enter'){ ev.preventDefault(); doLogin(); }
+function selectRole(r){
+  role=r; loginSelectedId=null; loginPin='';
+  document.getElementById('btn-admin').classList.toggle('active',r==='admin');
+  document.getElementById('btn-chef').classList.toggle('active',r==='chef');
+  document.getElementById('btn-pers').classList.toggle('active',r==='personnel');
+  buildUserList();
+  document.getElementById('pin-section').style.display='none';
+  document.getElementById('btn-login').disabled=true;
+  document.getElementById('login-pin-error').textContent='';
 }
-async function doLogin(){
-  var emailEl=document.getElementById('login-email');
-  var pwdEl=document.getElementById('login-password');
-  var btn=document.getElementById('btn-login');
-  var email=(emailEl&&emailEl.value?emailEl.value:'').trim();
-  var pwd=pwdEl&&pwdEl.value?pwdEl.value:'';
-  if(!email||!pwd){
-    setLoginMessage('Entrez votre adresse e-mail et votre mot de passe.','error');
+function buildUserList(){
+  var list=document.getElementById('user-list');
+  var selWrap=document.getElementById('chef-select-wrap');
+  var sel=document.getElementById('chef-select');
+  list.innerHTML='';
+  if(!role){list.style.display='none'; selWrap.style.display='none'; return;}
+  var isMgr=(role==='admin'||role==='chef');
+  if(isMgr){
+    // Dropdown for admin / chef
+    list.style.display='none';
+    var arr=role==='admin'?chefUsers.filter(function(c){return c.role==='admin';}):chefUsers.filter(function(c){return c.role!=='admin';});
+    sel.innerHTML='<option value="">— Choisir un '+(role==='admin'?'admin':'chef')+' —</option>'+arr.map(function(c){return '<option value="'+c.id+'">'+escAttr(c.nom)+'</option>';}).join('');
+    sel.value='';
+    selWrap.style.display='block';
     return;
   }
-  if(!auth){
-    setLoginMessage('Firebase Authentication n’est pas prêt.','error');
-    return;
+  // Card list for personnel
+  selWrap.style.display='none';
+  activePeople().forEach(function(u){
+    var id=u.id, nom=u.nom, col=tcol(u.g), sub=u.poste;
+    var hasPin=!!personPins[id];
+    var div=document.createElement('div'); div.className='user-item'; div.dataset.id=id;
+    div.innerHTML='<div class="user-avatar-sm" style="background:'+col+'">'+nom.charAt(0)+'</div><div><div class="user-name">'+nom+'</div><div class="user-group">'+sub+'</div></div><span class="pin-status">'+(hasPin?'🔐':'⚠️')+'</span>';
+    div.onclick=function(){
+      document.querySelectorAll('.user-item').forEach(function(x){x.classList.remove('selected');});
+      div.classList.add('selected');
+      loginSelectedId=id; loginPin=''; updateLoginPinDisplay();
+      document.getElementById('pin-section').style.display='flex';
+      document.getElementById('btn-login').disabled=true;
+      document.getElementById('login-pin-error').textContent='';
+      document.getElementById('login-pin-hint').textContent=hasPin?'Entrez votre code PIN à 5 chiffres':'Créez votre code PIN à 5 chiffres';
+      buildLoginPad();
+    };
+    list.appendChild(div);
+  });
+  list.style.display='flex';
+}
+function onChefSelect(id){
+  loginSelectedId=id||null; loginPin=''; updateLoginPinDisplay();
+  document.getElementById('login-pin-error').textContent='';
+  if(!id){document.getElementById('pin-section').style.display='none'; document.getElementById('btn-login').disabled=true; return;}
+  document.getElementById('pin-section').style.display='flex';
+  document.getElementById('btn-login').disabled=true;
+  document.getElementById('login-pin-hint').textContent='Entrez votre code PIN à 6 chiffres';
+  buildLoginPad();
+}
+function buildLoginPad(){
+  var pp=document.getElementById('login-pin-pad'); pp.innerHTML='';
+  [1,2,3,4,5,6,7,8,9,'',0,'⌫'].forEach(function(v){
+    var b=document.createElement('button'); b.className='pin-btn'; b.textContent=String(v);
+    if(v==='') b.style.visibility='hidden'; else b.onclick=function(){pressLoginPin(v);};
+    pp.appendChild(b);
+  });
+}
+function pressLoginPin(v){
+  var L=pinLen();
+  if(v==='⌫') loginPin=loginPin.slice(0,-1); else if(loginPin.length<L) loginPin+=String(v);
+  updateLoginPinDisplay();
+  document.getElementById('login-pin-error').textContent='';
+  if(loginPin.length===L){document.getElementById('btn-login').disabled=false; setTimeout(function(){doLogin();},160);} else document.getElementById('btn-login').disabled=true;
+}
+function updateLoginPinDisplay(){
+  var L=pinLen();
+  for(var i=0;i<6;i++){
+    var d=document.getElementById('ld'+i); if(!d) continue;
+    d.style.display=(i<L)?'block':'none';
+    d.classList.toggle('filled',i<loginPin.length);
   }
-  btn.disabled=true;
-  btn.textContent='Connexion…';
-  setLoginMessage('');
-  try{
-    await auth.signInWithEmailAndPassword(email,pwd);
-  }catch(e){
-    setLoginMessage(firebaseErrorMessage(e),'error');
-  }finally{
-    btn.disabled=false;
-    btn.textContent='Se connecter';
+}
+function doLogin(){
+  if(!role||!loginSelectedId){toast('Sélectionnez un profil'); return;}
+  if(role==='admin'||role==='chef'){
+    var c=chefInfo(loginSelectedId);
+    if(!c||!c.pin){document.getElementById('login-pin-error').textContent='Accès non configuré'; return;}
+    if(loginPin!==c.pin){document.getElementById('login-pin-error').textContent='Code PIN incorrect'; loginPin=''; updateLoginPinDisplay(); document.getElementById('btn-login').disabled=true; return;}
+    userId=c.id;
+    role=(c.role==='admin')?'admin':'chef';
+  } else {
+    var stored=personPins[loginSelectedId];
+    if(!stored){ if(loginPin.length!==PIN_LENGTH) return; personPins[loginSelectedId]=loginPin; addHistoryEntry('Création du PIN personnel pour '+pinfo(loginSelectedId).nom); lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen(); toast('PIN créé'); }
+    else if(loginPin!==stored){document.getElementById('login-pin-error').textContent='Code PIN incorrect'; loginPin=''; updateLoginPinDisplay(); document.getElementById('btn-login').disabled=true; return;}
+    userId=loginSelectedId;
   }
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.add('show');
+  lsSaveSession();
+  initApp();
 }
 function logout(){
   dayClipboard=null;
   if(!confirm('Se déconnecter ?')) return;
-  if(auth) auth.signOut();
-  else showLoginScreen();
+  role=null; userId=null; loginPin=''; loginSelectedId=null;
+  try{localStorage.removeItem('vb_session_v7'); localStorage.removeItem('vb_session');}catch(e){}
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('app').classList.remove('show');
+  document.getElementById('btn-admin').classList.remove('active');
+  document.getElementById('btn-chef').classList.remove('active');
+  document.getElementById('btn-pers').classList.remove('active');
+  document.getElementById('user-list').style.display='none';
+  var sw=document.getElementById('chef-select-wrap'); if(sw) sw.style.display='none';
+  document.getElementById('pin-section').style.display='none';
+  updateStatusBar();
 }
 // ── APP INIT / TABS ──────────────────────────────────────────
 function initApp(){
@@ -969,7 +968,7 @@ function chWk(d){wkMon=new Date(wkMon);wkMon.setDate(wkMon.getDate()+d*7);update
 function buildTabs(){
   var tabsEl=document.getElementById('tabs'), content=document.getElementById('content');
   tabsEl.innerHTML=''; content.innerHTML='';
-  var tabs=role==='chef'?[{id:'planning',lbl:'📋 Planning'},{id:'pointage',lbl:'⏱ Pointage'},{id:'settings',lbl:'⚙️ Paramètres'},{id:'export',lbl:'📦 Export'}]:[{id:'myplan',lbl:'📅 Mon planning'},{id:'pointage',lbl:'⏱ Mes heures'}];
+  var tabs=isManager()?[{id:'planning',lbl:'📋 Planning'},{id:'pointage',lbl:'⏱ Pointage'},{id:'settings',lbl:'⚙️ Paramètres'},{id:'export',lbl:'📦 Export'}]:[{id:'myplan',lbl:'📅 Mon planning'},{id:'pointage',lbl:'⏱ Mes heures'}];
   tabs.forEach(function(t,i){
     var b=document.createElement('button'); b.textContent=t.lbl; b.dataset.id=t.id; b.onclick=function(){showTab(t.id);}; tabsEl.appendChild(b);
     var v=document.createElement('div'); v.className='view'; v.id='tab-'+t.id; content.appendChild(v);
@@ -1301,7 +1300,7 @@ function renderPointage(){
     return;
   }
   var html='';
-  if(role==='chef'){
+  if(isManager()){
     var act=activePeople(); var selId=ptSelPers||((act[0]&&act[0].id)||''); if(selId && !pinfo(selId).active) selId=(act[0]&&act[0].id)||selId;
     html+='<div class="pillbar">';
     activePeople().forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="ptSelPers=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
@@ -1343,7 +1342,7 @@ function pointageDetailHtml(pid){
         +'</div>';
     });
 
-    if(count||role==='chef'||pid===userId){
+    if(count||isManager()||pid===userId){
       rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button></div>';
       html+='<div class="pt-day"><div class="pt-day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+'<span class="r">'+fmtH(pointageDayTotal(pid,di))+'</span></div>'+(count?rows:'<div class="empty-block">Aucune tâche planifiée</div>'+rows)+'</div>';
     }
@@ -1368,16 +1367,40 @@ function renderSettings(){
   var el=document.getElementById('tab-settings'); if(!el) return;
   var active=activePeople(), archived=archivedPeople();
   var html='';
-  html+=`<div class="setting-box"><h3>Accès et sécurité</h3><p>Cette version utilise <b>Firebase Authentication</b> pour le PC. Les rôles <b>admin</b>, <b>chef</b> et <b>personnel</b> sont lus automatiquement dans Firebase.</p>`;
-  html+=`<div class="setting-row"><div class="meta"><b>Compte connecté</b><span>${escAttr((authProfile&&authProfile.email)||authEmail||'')}</span></div><span class="pin-tag">${escAttr(authClaimRole||role||'')}</span></div>`;
-  html+=`<div class="setting-row"><div class="meta"><b>Comptes chef/admin Firebase</b><span>La création d'un vrai compte Firebase chef/admin et l'attribution des rôles restent faites dans Firebase Console. Les accès ci-dessous servent à l'<b>application GSM</b>.</span></div></div>`;
+  html+=`<div class="setting-box"><h3>Accès et sécurité</h3><p>La connexion se fait par <b>nom + code PIN à 5 chiffres</b>, sur PC comme sur GSM. ${isAdmin()?'En tant qu\'<b>admin</b>, vous gérez tous les accès, y compris les autres admins.':'En tant que <b>chef</b>, vous gérez le personnel et les autres chefs. Les comptes <b>admin</b> ne sont pas modifiables.'}</p>`;
+  html+=`<div class="setting-row"><div class="meta"><b>Connecté en tant que</b><span>${escAttr(currentDisplayName())}</span></div><span class="pin-tag">${role==='admin'?'👑 Admin':'👔 Chef'}</span></div>`;
   html+=`</div>`;
 
-  html+=`<div class="setting-box"><h3>Accès GSM chef / admin</h3><p>Ajoutez un chef de production pour l'application GSM et définissez son code PIN à 5 chiffres.</p>`;
-  chefUsers.forEach(function(c){
-    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:#1a3a5c">${escAttr(c.nom||'?').charAt(0)}</div><div class="meta"><b>${escAttr(c.nom)}</b><span>${escAttr(c.id)}</span></div><span class="pin-tag">${c.pin?'PIN défini':'PIN manquant'}</span><div class="person-tools"><button class="mini-btn" onclick="renameChefUser('${c.id}')">Renommer</button><button class="mini-btn" onclick="openPinModal('chef','${c.id}')">PIN</button><button class="mini-btn" onclick="resetChefPin('${c.id}')">Réinit. PIN</button>${chefUsers.length>1?`<button class="mini-btn" style="color:#dc2626" onclick="deleteChefUser('${c.id}')">Suppr.</button>`:''}</div></div>`;
+  // ── ADMINS ──
+  var admins=chefUsers.filter(function(c){return c.role==='admin';});
+  var chefs=chefUsers.filter(function(c){return c.role!=='admin';});
+
+  html+=`<div class="setting-box"><h3>👑 Administrateurs <span style="font-size:11px;color:#94a3b8;font-weight:600">(max 2)</span></h3><p>Les admins ont accès à tous les paramètres, y compris la gestion des autres admins.</p>`;
+  admins.forEach(function(c){
+    var tools='';
+    if(isAdmin()){
+      tools=`<button class="mini-btn" onclick="renameChefUser('${c.id}')">Renommer</button><button class="mini-btn" onclick="openPinModal('chef','${c.id}')">PIN</button><button class="mini-btn" onclick="resetChefPin('${c.id}')">Réinit. PIN</button>`;
+      if(admins.length>1) tools+=`<button class="mini-btn" onclick="setChefRole('${c.id}','chef')">↓ Rétrograder chef</button>`;
+      if(chefUsers.length>1&&admins.length>1) tools+=`<button class="mini-btn" style="color:#dc2626" onclick="deleteChefUser('${c.id}')">Suppr.</button>`;
+    } else {
+      tools=`<span style="font-size:11px;color:#94a3b8">Géré par un admin</span>`;
+    }
+    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:#92400e">${escAttr(c.nom||'?').charAt(0)}</div><div class="meta"><b>${escAttr(c.nom)}</b><span>${escAttr(c.id)}</span></div><span class="pin-tag">${c.pin?'PIN défini':'PIN manquant'}</span><div class="person-tools">${tools}</div></div>`;
   });
-  html+=`<button class="main-btn" onclick="addChefUser()">+ Ajouter un chef de production GSM</button></div>`;
+  if(isAdmin()&&admins.length<2){
+    html+=`<button class="add-btn" onclick="addChefUser('admin')">+ Ajouter un admin</button>`;
+  }
+  html+=`</div>`;
+
+  // ── CHEFS ──
+  html+=`<div class="setting-box"><h3>👔 Chefs de production</h3><p>Les chefs encodent le planning, le pointage et l'export. Ils ne peuvent pas modifier les comptes admin.</p>`;
+  chefs.forEach(function(c){
+    var tools=`<button class="mini-btn" onclick="renameChefUser('${c.id}')">Renommer</button><button class="mini-btn" onclick="openPinModal('chef','${c.id}')">PIN</button><button class="mini-btn" onclick="resetChefPin('${c.id}')">Réinit. PIN</button>`;
+    if(isAdmin()&&admins.length<2) tools+=`<button class="mini-btn" onclick="setChefRole('${c.id}','admin')">↑ Promouvoir admin</button>`;
+    tools+=`<button class="mini-btn" style="color:#dc2626" onclick="deleteChefUser('${c.id}')">Suppr.</button>`;
+    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:#1a3a5c">${escAttr(c.nom||'?').charAt(0)}</div><div class="meta"><b>${escAttr(c.nom)}</b><span>${escAttr(c.id)}</span></div><span class="pin-tag">${c.pin?'PIN défini':'PIN manquant'}</span><div class="person-tools">${tools}</div></div>`;
+  });
+  html+=`<button class="add-btn" onclick="addChefUser('chef')">+ Ajouter un chef</button></div>`;
 
   html+=`<div class="setting-box"><h3>Personnel</h3><p>Ajoutez un nom dans une section, mettez à jour le n° GSM, archivez un nom sans perdre l'historique et définissez le PIN GSM.</p>`;
   html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button></div>`;
@@ -1396,10 +1419,31 @@ function renderSettings(){
   html+=`</div>`;
   el.innerHTML=html;
 }
-function addChefUser(){var nom=prompt('Nom du nouvel accès chef GSM :',''); if(!nom) return; var id='chef_'+Date.now().toString(36); chefUsers.push({id:id,nom:String(nom).trim(),pin:DEFAULT_CHEF_PIN}); addHistoryEntry('Ajout accès chef GSM : '+nom); lsSave(); fbSave(); renderSettings(); toast('Accès chef ajouté avec PIN par défaut 12345');}
-function renameChefUser(id){var c=chefInfo(id); if(!c) return; var nom=prompt('Nouveau nom :',c.nom); if(!nom) return; var before=clone(c); c.nom=String(nom).trim(); addHistoryEntry('Renommage accès chef GSM : '+before.nom+' → '+c.nom,before,c); lsSave(); fbSave(); renderSettings(); updateStatusBar();}
-function deleteChefUser(id){if(chefUsers.length<=1){toast('Gardez au moins un accès chef'); return;} if(!confirm('Supprimer cet accès chef GSM ?')) return; var idx=chefUsers.findIndex(function(c){return c.id===id;}); if(idx<0) return; var before=clone(chefUsers[idx]); chefUsers.splice(idx,1); addHistoryEntry('Suppression accès chef GSM : '+before.nom,before,null); lsSave(); fbSave(); renderSettings();}
-function resetChefPin(id){var c=chefInfo(id); if(!c) return; if(!confirm('Réinitialiser le PIN de '+c.nom+' à 12345 ?')) return; var before=clone(c); c.pin=DEFAULT_CHEF_PIN; addHistoryEntry('Réinitialisation PIN chef GSM : '+c.nom,before,c); lsSave(); fbSave(); renderSettings(); toast('PIN chef réinitialisé à 12345');}
+function addChefUser(targetRole){
+  targetRole=(targetRole==='admin')?'admin':'chef';
+  if(targetRole==='admin'){
+    if(!isAdmin()){toast('Seul un admin peut ajouter un admin'); return;}
+    if(adminCount()>=2){toast('Maximum 2 admins'); return;}
+  }
+  var nom=prompt('Nom du nouvel accès '+(targetRole==='admin'?'admin':'chef')+' :',''); if(!nom) return;
+  var id='chef_'+Date.now().toString(36);
+  chefUsers.push({id:id,nom:String(nom).trim(),pin:DEFAULT_CHEF_PIN,role:targetRole});
+  addHistoryEntry('Ajout accès '+targetRole+' : '+nom); lsSave(); fbSave(); renderSettings(); toast('Accès ajouté avec PIN par défaut '+DEFAULT_CHEF_PIN);
+}
+function setChefRole(id,newRole){
+  if(!isAdmin()){toast('Seul un admin peut changer les rôles'); return;}
+  var c=chefInfo(id); if(!c) return;
+  newRole=(newRole==='admin')?'admin':'chef';
+  if(newRole==='admin'&&adminCount()>=2){toast('Maximum 2 admins'); return;}
+  if(newRole==='chef'&&c.role==='admin'&&adminCount()<=1){toast('Gardez au moins un admin'); return;}
+  var before=clone(c); c.role=newRole;
+  addHistoryEntry('Changement de rôle : '+c.nom+' → '+(newRole==='admin'?'Admin':'Chef'),before,c);
+  lsSave(); fbSave(); renderSettings(); updateStatusBar();
+  toast(c.nom+(newRole==='admin'?' est maintenant admin':' est maintenant chef'));
+}
+function renameChefUser(id){var c=chefInfo(id); if(!c) return; if(c.role==='admin'&&!isAdmin()){toast('Seul un admin peut modifier un admin'); return;} var nom=prompt('Nouveau nom :',c.nom); if(!nom) return; var before=clone(c); c.nom=String(nom).trim(); addHistoryEntry('Renommage accès : '+before.nom+' → '+c.nom,before,c); lsSave(); fbSave(); renderSettings(); updateStatusBar();}
+function deleteChefUser(id){var c=chefInfo(id); if(!c) return; if(c.role==='admin'&&!isAdmin()){toast('Seul un admin peut supprimer un admin'); return;} if(c.role==='admin'&&adminCount()<=1){toast('Gardez au moins un admin'); return;} if(chefUsers.length<=1){toast('Gardez au moins un accès'); return;} if(!confirm('Supprimer l\'accès de '+c.nom+' ?')) return; var idx=chefUsers.findIndex(function(x){return x.id===id;}); if(idx<0) return; var before=clone(chefUsers[idx]); chefUsers.splice(idx,1); addHistoryEntry('Suppression accès : '+before.nom,before,null); lsSave(); fbSave(); renderSettings();}
+function resetChefPin(id){var c=chefInfo(id); if(!c) return; if(c.role==='admin'&&!isAdmin()){toast('Seul un admin peut réinitialiser un admin'); return;} if(!confirm('Réinitialiser le PIN de '+c.nom+' à '+DEFAULT_CHEF_PIN+' ?')) return; var before=clone(c); c.pin=DEFAULT_CHEF_PIN; addHistoryEntry('Réinitialisation PIN : '+c.nom,before,c); lsSave(); fbSave(); renderSettings(); toast('PIN réinitialisé à '+DEFAULT_CHEF_PIN);}
 function addPersonToGroup(group){var nom=prompt('Nom de la personne à ajouter dans '+sectionLabel(group)+' :',''); if(!nom) return; var gsm=prompt('N° de GSM (optionnel) :','')||''; var p=normalizePerson({id:makePersonId(nom),nom:nom,g:group,poste:sectionLabel(group),gsm:gsm,active:true},PERS.length); PERS.push(p); sortPeople(); addHistoryEntry('Ajout personnel : '+p.nom+' — '+sectionLabel(group),null,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast('Personne ajoutée');}
 function updatePersonField(pid,field,value){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p[field]=String(value||'').trim(); if(field==='nom'&&!p[field]){toast('Le nom ne peut pas être vide'); p[field]=before[field]; renderSettings(); return;} addHistoryEntry('Mise à jour personnel : '+before.nom+' — '+field,before,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
 function updatePersonSection(pid,g){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.g=String(g||'P').toUpperCase(); p.poste=sectionLabel(p.g); sortPeople(); addHistoryEntry('Changement de section : '+before.nom+' → '+sectionLabel(p.g),before,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
@@ -1407,11 +1451,12 @@ function archivePerson(pid){var p=pinfo(pid); if(!p||!p.id) return; if(!confirm(
 function restorePerson(pid){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=true; sortPeople(); addHistoryEntry('Réactivation personnel : '+p.nom,before,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
 function resetPersonPin(pid){var p=pinfo(pid); if(!p||!p.id) return; if(!confirm('Supprimer le PIN GSM de '+p.nom+' ?')) return; var before=personPins[pid]||null; delete personPins[pid]; addHistoryEntry('Réinitialisation PIN personnel : '+p.nom,before,null); lsSave(); fbSave(); renderSettings(); toast('PIN personnel supprimé');}
 // ── PIN MODAL ────────────────────────────────────────────────
-function openPinModal(kind,id){pinEditTarget={kind:kind,id:id}; pinEditValue=''; document.getElementById('pm-title').textContent=(kind==='chef'?'PIN chef':'PIN personnel'); document.getElementById('pm-hint').textContent='Entrez un code à 5 chiffres'; document.getElementById('pm-error').textContent=''; updatePmDisplay(); buildPmPad(); document.getElementById('pin-ov').classList.add('on');}
+function pmLen(){return (pinEditTarget&&pinEditTarget.kind==='chef')?CHEF_PIN_LENGTH:PIN_LENGTH;}
+function openPinModal(kind,id){pinEditTarget={kind:kind,id:id}; pinEditValue=''; var L=pmLen(); document.getElementById('pm-title').textContent=(kind==='chef'?'PIN chef / admin':'PIN personnel'); document.getElementById('pm-hint').textContent='Entrez un code à '+L+' chiffres'; document.getElementById('pm-error').textContent=''; updatePmDisplay(); buildPmPad(); document.getElementById('pin-ov').classList.add('on');}
 function buildPmPad(){var pp=document.getElementById('pm-pad'); pp.innerHTML=''; [1,2,3,4,5,6,7,8,9,'',0,'⌫'].forEach(function(v){var b=document.createElement('button'); b.className='pm-btn'; b.textContent=String(v); if(v==='') b.style.visibility='hidden'; else b.onclick=function(){pressPm(v);}; pp.appendChild(b);});}
-function pressPm(v){if(v==='⌫') pinEditValue=pinEditValue.slice(0,-1); else if(pinEditValue.length<PIN_LENGTH) pinEditValue+=String(v); updatePmDisplay(); document.getElementById('pm-error').textContent='';}
-function updatePmDisplay(){for(var i=0;i<PIN_LENGTH;i++) document.getElementById('pd'+i).classList.toggle('filled',i<pinEditValue.length);}
-function savePinModal(){if(!pinEditTarget) return; if(pinEditValue.length!==PIN_LENGTH){document.getElementById('pm-error').textContent='5 chiffres requis'; return;} if(pinEditTarget.kind==='chef'){var c=chefInfo(pinEditTarget.id); if(c){var before=clone(c); c.pin=pinEditValue; addHistoryEntry('Mise à jour PIN chef : '+c.nom,before,c);}} else {var pid=pinEditTarget.id, beforeP=personPins[pid]||null; personPins[pid]=pinEditValue; addHistoryEntry('Mise à jour PIN personnel : '+pinfo(pid).nom,beforeP,pinEditValue);} lsSave(); fbSave(); renderSettings(); closePinModal(); toast('PIN enregistré');}
+function pressPm(v){var L=pmLen(); if(v==='⌫') pinEditValue=pinEditValue.slice(0,-1); else if(pinEditValue.length<L) pinEditValue+=String(v); updatePmDisplay(); document.getElementById('pm-error').textContent='';}
+function updatePmDisplay(){var L=pmLen(); for(var i=0;i<6;i++){var d=document.getElementById('pd'+i); if(!d) continue; d.style.display=(i<L)?'block':'none'; d.classList.toggle('filled',i<pinEditValue.length);}}
+function savePinModal(){if(!pinEditTarget) return; var L=pmLen(); if(pinEditValue.length!==L){document.getElementById('pm-error').textContent=L+' chiffres requis'; return;} if(pinEditTarget.kind==='chef'){var c=chefInfo(pinEditTarget.id); if(c){if(c.role==='admin'&&!isAdmin()){toast('Seul un admin peut modifier un admin'); closePinModal(); return;} var before=clone(c); c.pin=pinEditValue; addHistoryEntry('Mise à jour PIN : '+c.nom,before,c);}} else {var pid=pinEditTarget.id, beforeP=personPins[pid]||null; personPins[pid]=pinEditValue; addHistoryEntry('Mise à jour PIN personnel : '+pinfo(pid).nom,beforeP,pinEditValue);} lsSave(); fbSave(); renderSettings(); closePinModal(); toast('PIN enregistré');}
 function closePinModal(e){if(e&&e.target!==document.getElementById('pin-ov')) return; document.getElementById('pin-ov').classList.remove('on'); pinEditTarget=null; pinEditValue='';}
 
 // ── HISTORY ──────────────────────────────────────────────────
@@ -1454,6 +1499,8 @@ function doPrint(){
 // ── INIT ─────────────────────────────────────────────────────
 lsLoad();
 migrateState();
+var sess=lsLoadSession();
+if(sess&&sess.role&&sess.userId){role=sess.role; userId=sess.userId; if(((role==='chef'||role==='admin')&&chefInfo(userId))||(role==='personnel'&&pinfo(userId).id===userId)){document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.add('show'); initApp();}}
 window.addEventListener('load', function(){initFirebase(); if(!wkMon) updateStatusBar();});
 document.addEventListener('keydown', function(e){
   var tag=(document.activeElement&&document.activeElement.tagName||'').toLowerCase();

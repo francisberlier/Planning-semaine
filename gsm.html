@@ -24,7 +24,7 @@ input,select{font-size:14px}
 .login-sub{color:rgba(255,255,255,.7);font-size:13px;margin-bottom:28px}
 .login-card{background:#fff;border-radius:18px;padding:22px;width:100%;max-width:360px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
 .login-card h3{font-size:15px;font-weight:700;color:var(--bleu);margin-bottom:14px;text-align:center}
-.role-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.role-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
 .role-btn{padding:14px 6px;border-radius:10px;border:2px solid var(--bd);background:#fff;font-size:12px;font-weight:700;color:#64748b;text-align:center;transition:all .2s}
 .role-btn.active{border-color:var(--bleu2);background:#eff6ff;color:var(--bleu2)}
 .role-btn .icon{font-size:26px;display:block;margin-bottom:4px}
@@ -141,7 +141,7 @@ input,select{font-size:14px}
 }
 
 /* Settings/export */
-.setting-box{padding:14px 16px}
+.setting-box{padding:14px 16px;flex-shrink:0}
 .setting-box h3{font-size:14px;color:var(--bleu);margin-bottom:8px}
 .setting-box p{font-size:12px;color:#64748b;line-height:1.45;margin-bottom:10px}
 .setting-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f1f5f9;flex-wrap:wrap}
@@ -158,6 +158,8 @@ input,select{font-size:14px}
 .pin-tag{font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}
 .mini-btn{padding:6px 10px;border-radius:8px;border:1px solid var(--bd);background:#fff;font-size:11px;font-weight:700}
 .main-btn{width:100%;padding:13px;border-radius:10px;border:none;background:var(--bleu);color:#fff;font-weight:700;font-size:14px;margin-bottom:8px}
+.add-btn{display:inline-flex;align-items:center;gap:4px;padding:7px 14px;border-radius:8px;border:1.5px dashed #94a3b8;background:#f8fafc;color:var(--bleu);font-weight:700;font-size:12px;cursor:pointer;margin-top:8px}
+.add-btn:hover{background:#eff6ff;border-color:var(--bleu2);border-style:solid}
 .secondary-btn{width:100%;padding:13px;border-radius:10px;border:2px dashed #94a3b8;background:#f8fafc;color:#64748b;font-weight:700;font-size:14px;margin-bottom:8px}
 
 /* Modals */
@@ -287,13 +289,17 @@ input,select{font-size:14px}
   <div class="login-card">
     <h3>Qui êtes-vous ?</h3>
     <div class="role-btns">
-      <div class="role-btn" id="btn-chef" onclick="selectRole('chef')"><span class="icon">👔</span>Chef / admin</div>
+      <div class="role-btn" id="btn-admin" onclick="selectRole('admin')"><span class="icon">👑</span>Admin</div>
+      <div class="role-btn" id="btn-chef" onclick="selectRole('chef')"><span class="icon">👔</span>Chef</div>
       <div class="role-btn" id="btn-pers" onclick="selectRole('personnel')"><span class="icon">👷</span>Personnel</div>
+    </div>
+    <div id="chef-select-wrap" style="display:none;margin-bottom:14px">
+      <select id="chef-select" onchange="onChefSelect(this.value)" style="width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:15px;font-weight:700;color:var(--bleu);background:#fff"></select>
     </div>
     <div id="user-list"></div>
     <div id="pin-section">
       <div class="pin-display">
-        <div class="pin-dot" id="ld0"></div><div class="pin-dot" id="ld1"></div><div class="pin-dot" id="ld2"></div><div class="pin-dot" id="ld3"></div><div class="pin-dot" id="ld4"></div>
+        <div class="pin-dot" id="ld0"></div><div class="pin-dot" id="ld1"></div><div class="pin-dot" id="ld2"></div><div class="pin-dot" id="ld3"></div><div class="pin-dot" id="ld4"></div><div class="pin-dot" id="ld5"></div>
       </div>
       <div class="pin-pad" id="login-pin-pad"></div>
       <div class="pin-error" id="login-pin-error"></div>
@@ -301,7 +307,6 @@ input,select{font-size:14px}
     </div>
     <button class="btn-login" id="btn-login" onclick="doLogin()" disabled>Entrer</button>
   </div>
-  <button onclick="doResetAllPins()" style="margin-top:16px;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.35);color:#fff;border-radius:10px;padding:10px 22px;font-size:12px;font-weight:700;cursor:pointer;">🔑 Réinitialiser tous les PIN</button>
 </div>
 
 <div id="app">
@@ -313,6 +318,7 @@ input,select{font-size:14px}
       <button onclick="chWk(1)">▶</button>
     </div>
     <span id="fb-status" title="Firebase" style="font-size:12px">🔴</span>
+    <button onclick="doHardReload()" title="Recharger l'application (vide le cache)" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer;font-weight:600">🔄</button>
     <div id="user-badge" onclick="logout()">👤 <span id="user-name-hdr"></span> · Déco</div>
   </div>
   <div id="tabs"></div>
@@ -345,7 +351,7 @@ input,select{font-size:14px}
     <h3 id="pm-title">Définir un PIN</h3>
     <div id="pm-hint"></div>
     <div class="pin-modal-display">
-      <div class="pm-dot" id="pd0"></div><div class="pm-dot" id="pd1"></div><div class="pm-dot" id="pd2"></div><div class="pm-dot" id="pd3"></div><div class="pm-dot" id="pd4"></div>
+      <div class="pm-dot" id="pd0"></div><div class="pm-dot" id="pd1"></div><div class="pm-dot" id="pd2"></div><div class="pm-dot" id="pd3"></div><div class="pm-dot" id="pd4"></div><div class="pm-dot" id="pd5"></div>
     </div>
     <div id="pm-pad"></div>
     <div id="pm-error"></div>
@@ -444,8 +450,9 @@ function fbListen(){
 
 // ── CONSTANTS ────────────────────────────────────────────────
 var PIN_LENGTH=5;
-var DEFAULT_CHEF_PIN='12345';
-var DEFAULT_CHEF_USERS=[{id:'chef_main', nom:'Chef principal', pin:DEFAULT_CHEF_PIN}];
+var CHEF_PIN_LENGTH=6;
+var DEFAULT_CHEF_PIN='123456';
+var DEFAULT_CHEF_USERS=[{id:'chef_main', nom:'Chef principal', pin:DEFAULT_CHEF_PIN, role:'admin'}];
 
 var DEFAULT_PERS=[
   {id:'david',nom:'David',g:'M',poste:'Numerique',gsm:''},
@@ -534,6 +541,10 @@ function dayDate(i){var d=new Date(wkMon);d.setDate(d.getDate()+i);return d;}
 function wkKey(){return wkMon.toISOString().slice(0,10);}
 function pinfo(id){for(var i=0;i<PERS.length;i++)if(PERS[i].id===id)return PERS[i];return {id:id||'',nom:id||'',g:'B',poste:''};}
 function chefInfo(id){for(var i=0;i<chefUsers.length;i++)if(chefUsers[i].id===id)return chefUsers[i];return null;}
+function chefRole(id){var c=chefInfo(id); return c?(c.role||'chef'):'';}
+function adminCount(){return chefUsers.filter(function(c){return c.role==='admin';}).length;}
+function isAdmin(){return role==='admin';}
+function isManager(){return role==='admin'||role==='chef';}
 function tinfo(id){for(var i=0;i<TYPES.length;i++)if(TYPES[i].id===id)return TYPES[i];return{id:id,lbl:id,col:'#64748b'};}
 function tcol(id){return GCOL[id]||'#64748b';}
 function roundQuarter(v){v=parseFloat(v)||0;return Math.round(v*4)/4;}
@@ -541,11 +552,12 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function sameJSON(a,b){return JSON.stringify(a==null?null:a)===JSON.stringify(b==null?null:b);}
-function padPin(v){v=String(v||'').replace(/\D/g,'');return v.slice(0,PIN_LENGTH);}
+function padPin(v,len){v=String(v||'').replace(/\D/g,'');return v.slice(0,len||PIN_LENGTH);}
+function pinLen(){return (role==='admin'||role==='chef')?CHEF_PIN_LENGTH:PIN_LENGTH;}
 function fmtH(v){v=roundQuarter(v);var s=v.toFixed(2).replace('.',',');s=s.replace(/,00$/,'').replace(/(,\d)0$/,'$1');return s+' h';}
 function fmtHShort(v){return fmtH(v).replace(' ','');}
 function ensureMeta(meta){meta=meta||{};return {lastModifiedAt:meta.lastModifiedAt||null,lastModifiedBy:meta.lastModifiedBy||'',history:Array.isArray(meta.history)?meta.history:[]};}
-function currentDisplayName(){if(role==='chef'&&userId){var c=chefInfo(userId);return c?c.nom:'Chef';} if(role==='personnel'&&userId){return pinfo(userId).nom;} return 'Système';}
+function currentDisplayName(){if(isManager()&&userId){var c=chefInfo(userId);return c?c.nom:'Chef';} if(role==='personnel'&&userId){return pinfo(userId).nom;} return 'Système';}
 function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.colorIdx==null?'':t.colorIdx].join('|');}
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
@@ -643,8 +655,8 @@ function updateStatusBar(){
     else if(dayClipboard&&dayClipboard.mode==='day'&&dayClipboard.tasks&&dayClipboard.tasks.length) sc.textContent='📋 Presse-papiers : '+(dayClipboard.label||'journée copiée')+' — cliquez une autre date pour coller';
     else sc.textContent='📋 Presse-papiers : vide';
   }
-  if(hb) hb.style.display=(role==='chef'&&userId)?'inline-flex':'none';
-  if(ub){ub.style.display=(role==='chef'&&userId)?'inline-flex':'none'; ub.disabled=!undoStack.length; ub.style.opacity=undoStack.length?'1':'.45';}
+  if(hb) hb.style.display=(isManager()&&userId)?'inline-flex':'none';
+  if(ub){ub.style.display=(isManager()&&userId)?'inline-flex':'none'; ub.disabled=!undoStack.length; ub.style.opacity=undoStack.length?'1':'.45';}
 }
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');setTimeout(function(){el.classList.remove('on');},2500);}
 function getPlanningScrollState(){
@@ -679,14 +691,6 @@ function restoreEditorScrollState(state){
 }
 
 // ── STORAGE ──────────────────────────────────────────────────
-function doResetAllPins(){
-  if(!confirm('Réinitialiser TOUS les PIN ?\n\nLe PIN chef redeviendra 12345.\nTous les PIN du personnel seront supprimés.\n\nContinuer ?')) return;
-  chefUsers=chefUsers.map(function(c){return Object.assign({},c,{pin:'12345'});});
-  personPins={};
-  try{lsSave();}catch(e){}
-  try{fbSave();}catch(e){}
-  alert('✅ PIN réinitialisés !\n\nPIN chef : 12345\nPersonnel : chaque personne devra créer un nouveau PIN à la première connexion.');
-}
 function lsSave(){
   try{
     localStorage.setItem('vb_plan_v7',JSON.stringify(planning));
@@ -712,6 +716,19 @@ function lsLoad(){
     var m=localStorage.getItem('vb_meta_v7')||localStorage.getItem('vb_meta'); if(m) appMeta=ensureMeta(JSON.parse(m));
   }catch(e){}
 }
+function doHardReload(){
+  if(!confirm('Recharger l\'application pour récupérer la dernière version ?\n\nVos données ne seront pas perdues (elles sont sur Firebase).')) return;
+  // Try to clear all caches (service worker style)
+  if('caches' in window){
+    caches.keys().then(function(keys){
+      keys.forEach(function(k){caches.delete(k);});
+    }).finally(function(){
+      window.location.reload(true);
+    });
+  } else {
+    window.location.reload(true);
+  }
+}
 function lsSaveSession(){try{localStorage.setItem('vb_session_v7',JSON.stringify({role:role,userId:userId}));}catch(e){}}
 function lsLoadSession(){try{var s=localStorage.getItem('vb_session_v7')||localStorage.getItem('vb_session');return s?JSON.parse(s):null;}catch(e){return null;}}
 
@@ -721,8 +738,14 @@ function migrateState(){
   PERS=PERS.map(function(p,i){return normalizePerson(p,i);});
   sortPeople();
   if(!Array.isArray(chefUsers)||!chefUsers.length) chefUsers=clone(DEFAULT_CHEF_USERS);
-  chefUsers=chefUsers.map(function(c,i){return {id:c.id||('chef_'+i),nom:String(c.nom||('Chef '+(i+1))),pin:padPin(c.pin||DEFAULT_CHEF_PIN)};});
-  Object.keys(personPins||{}).forEach(function(k){personPins[k]=padPin(personPins[k]);});
+  chefUsers=chefUsers.map(function(c,i){
+    var r=(c.role==='admin'||c.role==='chef')?c.role:(i===0?'admin':'chef');
+    var p=padPin(c.pin||'',CHEF_PIN_LENGTH);
+    if(p.length!==CHEF_PIN_LENGTH) p=DEFAULT_CHEF_PIN;
+    return {id:c.id||('chef_'+i),nom:String(c.nom||('Chef '+(i+1))),pin:p,role:r};
+  });
+  if(!chefUsers.some(function(c){return c.role==='admin';})) chefUsers[0].role='admin';
+  Object.keys(personPins||{}).forEach(function(k){personPins[k]=padPin(personPins[k],PIN_LENGTH);});
   appMeta=ensureMeta(appMeta);
 }
 function cleanupPlanningPath(w,pid,di){
@@ -818,6 +841,7 @@ function savePointageDay(pid,di,day,historyText,before,after){
 // ── LOGIN ────────────────────────────────────────────────────
 function selectRole(r){
   role=r; loginSelectedId=null; loginPin='';
+  document.getElementById('btn-admin').classList.toggle('active',r==='admin');
   document.getElementById('btn-chef').classList.toggle('active',r==='chef');
   document.getElementById('btn-pers').classList.toggle('active',r==='personnel');
   buildUserList();
@@ -826,12 +850,24 @@ function selectRole(r){
   document.getElementById('login-pin-error').textContent='';
 }
 function buildUserList(){
-  var list=document.getElementById('user-list'); list.innerHTML='';
-  if(!role){list.style.display='none'; return;}
-  var arr=role==='chef'?chefUsers:activePeople();
-  arr.forEach(function(u){
-    var id=u.id, nom=u.nom, col=role==='chef'?'#1a3a5c':tcol(u.g), sub=role==='chef'?'Accès chef / admin':u.poste;
-    var hasPin=role==='chef'?!!u.pin:!!personPins[id];
+  var list=document.getElementById('user-list');
+  var selWrap=document.getElementById('chef-select-wrap');
+  var sel=document.getElementById('chef-select');
+  list.innerHTML='';
+  if(!role){list.style.display='none'; if(selWrap) selWrap.style.display='none'; return;}
+  var isMgr=(role==='admin'||role==='chef');
+  if(isMgr){
+    list.style.display='none';
+    var arr=role==='admin'?chefUsers.filter(function(c){return c.role==='admin';}):chefUsers.filter(function(c){return c.role!=='admin';});
+    sel.innerHTML='<option value="">— Choisir un '+(role==='admin'?'admin':'chef')+' —</option>'+arr.map(function(c){return '<option value="'+c.id+'">'+escAttr(c.nom)+'</option>';}).join('');
+    sel.value='';
+    selWrap.style.display='block';
+    return;
+  }
+  if(selWrap) selWrap.style.display='none';
+  activePeople().forEach(function(u){
+    var id=u.id, nom=u.nom, col=tcol(u.g), sub=u.poste;
+    var hasPin=!!personPins[id];
     var div=document.createElement('div'); div.className='user-item'; div.dataset.id=id;
     div.innerHTML='<div class="user-avatar-sm" style="background:'+col+'">'+nom.charAt(0)+'</div><div><div class="user-name">'+nom+'</div><div class="user-group">'+sub+'</div></div><span class="pin-status">'+(hasPin?'🔐':'⚠️')+'</span>';
     div.onclick=function(){
@@ -841,13 +877,21 @@ function buildUserList(){
       document.getElementById('pin-section').style.display='flex';
       document.getElementById('btn-login').disabled=true;
       document.getElementById('login-pin-error').textContent='';
-      if(role==='chef') document.getElementById('login-pin-hint').textContent='Entrez votre code PIN à 5 chiffres';
-      else document.getElementById('login-pin-hint').textContent=hasPin?'Entrez votre code PIN à 5 chiffres':'Créez votre code PIN à 5 chiffres';
+      document.getElementById('login-pin-hint').textContent=hasPin?'Entrez votre code PIN à 5 chiffres':'Créez votre code PIN à 5 chiffres';
       buildLoginPad();
     };
     list.appendChild(div);
   });
   list.style.display='flex';
+}
+function onChefSelect(id){
+  loginSelectedId=id||null; loginPin=''; updateLoginPinDisplay();
+  document.getElementById('login-pin-error').textContent='';
+  if(!id){document.getElementById('pin-section').style.display='none'; document.getElementById('btn-login').disabled=true; return;}
+  document.getElementById('pin-section').style.display='flex';
+  document.getElementById('btn-login').disabled=true;
+  document.getElementById('login-pin-hint').textContent='Entrez votre code PIN à 6 chiffres';
+  buildLoginPad();
 }
 function buildLoginPad(){
   var pp=document.getElementById('login-pin-pad'); pp.innerHTML='';
@@ -858,19 +902,28 @@ function buildLoginPad(){
   });
 }
 function pressLoginPin(v){
-  if(v==='⌫') loginPin=loginPin.slice(0,-1); else if(loginPin.length<PIN_LENGTH) loginPin+=String(v);
+  var L=pinLen();
+  if(v==='⌫') loginPin=loginPin.slice(0,-1); else if(loginPin.length<L) loginPin+=String(v);
   updateLoginPinDisplay();
   document.getElementById('login-pin-error').textContent='';
-  if(loginPin.length===PIN_LENGTH){document.getElementById('btn-login').disabled=false; setTimeout(function(){doLogin();},160);} else document.getElementById('btn-login').disabled=true;
+  if(loginPin.length===L){document.getElementById('btn-login').disabled=false; setTimeout(function(){doLogin();},160);} else document.getElementById('btn-login').disabled=true;
 }
-function updateLoginPinDisplay(){for(var i=0;i<PIN_LENGTH;i++) document.getElementById('ld'+i).classList.toggle('filled',i<loginPin.length);}
+function updateLoginPinDisplay(){
+  var L=pinLen();
+  for(var i=0;i<6;i++){
+    var d=document.getElementById('ld'+i); if(!d) continue;
+    d.style.display=(i<L)?'block':'none';
+    d.classList.toggle('filled',i<loginPin.length);
+  }
+}
 function doLogin(){
   if(!role||!loginSelectedId){toast('Sélectionnez un profil'); return;}
-  if(role==='chef'){
+  if(role==='admin'||role==='chef'){
     var c=chefInfo(loginSelectedId);
-    if(!c||!c.pin){document.getElementById('login-pin-error').textContent='Accès chef non configuré'; return;}
+    if(!c||!c.pin){document.getElementById('login-pin-error').textContent='Accès non configuré'; return;}
     if(loginPin!==c.pin){document.getElementById('login-pin-error').textContent='Code PIN incorrect'; loginPin=''; updateLoginPinDisplay(); document.getElementById('btn-login').disabled=true; return;}
     userId=c.id;
+    role=(c.role==='admin')?'admin':'chef';
   } else {
     var stored=personPins[loginSelectedId];
     if(!stored){ if(loginPin.length!==PIN_LENGTH) return; personPins[loginSelectedId]=loginPin; addHistoryEntry('Création du PIN personnel pour '+pinfo(loginSelectedId).nom); lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen(); toast('PIN créé'); }
@@ -888,9 +941,11 @@ function logout(){dayClipboard=null;
   try{localStorage.removeItem('vb_session_v7'); localStorage.removeItem('vb_session');}catch(e){}
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('app').classList.remove('show');
+  document.getElementById('btn-admin').classList.remove('active');
   document.getElementById('btn-chef').classList.remove('active');
   document.getElementById('btn-pers').classList.remove('active');
   document.getElementById('user-list').style.display='none';
+  var sw=document.getElementById('chef-select-wrap'); if(sw) sw.style.display='none';
   document.getElementById('pin-section').style.display='none';
   updateStatusBar();
 }
@@ -909,18 +964,18 @@ function updateHeader(){
   document.getElementById('user-name-hdr').textContent=currentDisplayName();
 }
 function chWk(d){wkMon=new Date(wkMon);wkMon.setDate(wkMon.getDate()+d*7);updateHeader();updateStatusBar();renderCurrentTab();}
-function selectedMobilePersonId(){ if(role==='chef'){var act=activePeople(); if(ptSelPers && pinfo(ptSelPers).active!==false) return ptSelPers; return (act[0]&&act[0].id)||'';} return userId; }
+function selectedMobilePersonId(){ if(isManager()){var act=activePeople(); if(ptSelPers && pinfo(ptSelPers).active!==false) return ptSelPers; return (act[0]&&act[0].id)||'';} return userId; }
 function chooseMobilePerson(pid,nextTab){ ptSelPers=pid; updateStatusBar(); if(nextTab) showTab(nextTab); else renderPersonnel(); }
 function buildTabs(){
   var tabsEl=document.getElementById('tabs'), content=document.getElementById('content');
   tabsEl.innerHTML=''; content.innerHTML='';
-  var tabs=role==='chef'?[{id:'personnel',lbl:'👥 Personnel'},{id:'planning',lbl:'📅 Planning'},{id:'pointage',lbl:'⏱ Pointage'}]:[{id:'pointage',lbl:'⏱ Mes heures'}];
+  var tabs=isManager()?[{id:'personnel',lbl:'👥 Personnel'},{id:'planning',lbl:'📅 Planning'},{id:'pointage',lbl:'⏱ Pointage'}]:[{id:'pointage',lbl:'⏱ Mes heures'}];
   tabs.forEach(function(t,i){
     var b=document.createElement('button'); b.textContent=t.lbl; b.dataset.id=t.id; b.onclick=function(){showTab(t.id);}; tabsEl.appendChild(b);
     var v=document.createElement('div'); v.className='view'; v.id='tab-'+t.id; content.appendChild(v);
     if(i===0) currentTab=t.id;
   });
-  currentTab = role==='chef' ? 'personnel' : 'pointage';
+  currentTab = isManager() ? 'personnel' : 'pointage';
   showTab(currentTab);
 }
 function showTab(id){currentTab=id; document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.id===id);}); document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='tab-'+id);}); renderCurrentTab();}
@@ -1185,12 +1240,12 @@ function renderPointage(){
   }
   var st=el.scrollTop||0;
   var pid=selectedMobilePersonId();
-  if(role==='chef' && !pid){ el.innerHTML='<div class="mobile-empty">Choisissez d’abord une personne dans l’onglet Personnel.</div>'; return; }
+  if(isManager() && !pid){ el.innerHTML='<div class="mobile-empty">Choisissez d’abord une personne dans l’onglet Personnel.</div>'; return; }
   el.innerHTML=pointageDetailHtml(pid);
   setTimeout(function(){el.scrollTop=st;},0);
 }
 function pointageDetailHtml(pid){
-  var p=pinfo(pid), col=tcol(p.g), html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">Pointage semaine '+isoWeek(wkMon)+'</div></div>'+(role==='chef'?'<div class="person-actions"><button class="mini-btn" onclick="showTab(\'personnel\')">Changer</button><button class="mini-btn" onclick="showTab(\'planning\')">Voir planning</button></div>':'')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div>';
+  var p=pinfo(pid), col=tcol(p.g), html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">Pointage semaine '+isoWeek(wkMon)+'</div></div>'+(isManager()?'<div class="person-actions"><button class="mini-btn" onclick="showTab(\'personnel\')">Changer</button><button class="mini-btn" onclick="showTab(\'planning\')">Voir planning</button></div>':'')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -1276,11 +1331,32 @@ var numPadState=null;
 function renderSettings(){
   var el=document.getElementById('tab-settings'); if(!el) return;
   var html='';
-  html+=`<div class="setting-box"><h3>Accès chef / admin</h3><p>Plusieurs personnes peuvent avoir accès aux fonctions chef. Chaque accès dispose maintenant d’un PIN à 5 chiffres.</p>`;
-  chefUsers.forEach(function(c){
-    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:#1a3a5c">${c.nom.charAt(0)}</div><div class="meta"><b>${c.nom}</b><span>${c.id}</span></div><span class="pin-tag">${c.pin?'PIN défini':'PIN manquant'}</span><button class="mini-btn" onclick="renameChefUser('${c.id}')">Renommer</button><button class="mini-btn" onclick="openPinModal('chef','${c.id}')">PIN</button>${chefUsers.length>1?`<button class="mini-btn" style="color:#dc2626" onclick="deleteChefUser('${c.id}')">Suppr.</button>`:''}</div>`;
+  var admins=chefUsers.filter(function(c){return c.role==='admin';});
+  var chefs=chefUsers.filter(function(c){return c.role!=='admin';});
+
+  html+=`<div class="setting-box"><h3>Connecté</h3><div class="setting-row"><div class="meta"><b>${escAttr(currentDisplayName())}</b><span>${role==='admin'?'👑 Admin':'👔 Chef'}</span></div></div></div>`;
+
+  html+=`<div class="setting-box"><h3>👑 Administrateurs <span style="font-size:11px;color:#94a3b8;font-weight:600">(max 2)</span></h3>`;
+  admins.forEach(function(c){
+    var tools='';
+    if(isAdmin()){
+      tools=`<button class="mini-btn" onclick="renameChefUser('${c.id}')">Renommer</button><button class="mini-btn" onclick="openPinModal('chef','${c.id}')">PIN</button>`;
+      if(admins.length>1) tools+=`<button class="mini-btn" onclick="setChefRole('${c.id}','chef')">↓ Chef</button>`;
+      if(chefUsers.length>1&&admins.length>1) tools+=`<button class="mini-btn" style="color:#dc2626" onclick="deleteChefUser('${c.id}')">Suppr.</button>`;
+    } else { tools=`<span style="font-size:11px;color:#94a3b8">Géré par un admin</span>`; }
+    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:#92400e">${escAttr(c.nom||'?').charAt(0)}</div><div class="meta"><b>${escAttr(c.nom)}</b><span>${c.pin?'PIN défini':'PIN manquant'}</span></div><div class="person-tools">${tools}</div></div>`;
   });
-  html+=`<button class="main-btn" onclick="addChefUser()">+ Ajouter un accès chef</button></div>`;
+  if(isAdmin()&&admins.length<2) html+=`<button class="add-btn" onclick="addChefUser('admin')">+ Ajouter un admin</button>`;
+  html+=`</div>`;
+
+  html+=`<div class="setting-box"><h3>👔 Chefs de production</h3>`;
+  chefs.forEach(function(c){
+    var tools=`<button class="mini-btn" onclick="renameChefUser('${c.id}')">Renommer</button><button class="mini-btn" onclick="openPinModal('chef','${c.id}')">PIN</button>`;
+    if(isAdmin()&&admins.length<2) tools+=`<button class="mini-btn" onclick="setChefRole('${c.id}','admin')">↑ Admin</button>`;
+    tools+=`<button class="mini-btn" style="color:#dc2626" onclick="deleteChefUser('${c.id}')">Suppr.</button>`;
+    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:#1a3a5c">${escAttr(c.nom||'?').charAt(0)}</div><div class="meta"><b>${escAttr(c.nom)}</b><span>${c.pin?'PIN défini':'PIN manquant'}</span></div><div class="person-tools">${tools}</div></div>`;
+  });
+  html+=`<button class="add-btn" onclick="addChefUser('chef')">+ Ajouter un chef</button></div>`;
 
   html+=`<div class="setting-box"><h3>Personnel</h3><p>Ajoutez un nom dans une section, modifiez la section, le numéro de GSM et le PIN de chaque personne.</p>`;
   html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button></div>`;
@@ -1292,9 +1368,29 @@ function renderSettings(){
   html+=`</div>`;
   el.innerHTML=html;
 }
-function addChefUser(){var nom=prompt('Nom du nouvel accès chef :',''); if(!nom) return; var id='chef_'+Date.now().toString(36); chefUsers.push({id:id,nom:nom,pin:DEFAULT_CHEF_PIN}); addHistoryEntry('Ajout d’un accès chef : '+nom); lsSave(); fbSave(); renderSettings(); toast('Accès chef ajouté avec PIN par défaut 12345');}
-function renameChefUser(id){var c=chefInfo(id); if(!c) return; var nom=prompt('Nouveau nom :',c.nom); if(!nom) return; var before=clone(c); c.nom=nom; addHistoryEntry('Renommage accès chef : '+before.nom+' → '+nom,before,c); lsSave(); fbSave(); renderSettings(); updateHeader(); updateStatusBar();}
-function deleteChefUser(id){if(!confirm('Supprimer cet accès chef ?')) return; var idx=chefUsers.findIndex(function(c){return c.id===id;}); if(idx<0) return; var before=clone(chefUsers[idx]); chefUsers.splice(idx,1); addHistoryEntry('Suppression accès chef : '+before.nom,before,null); lsSave(); fbSave(); renderSettings();}
+function addChefUser(targetRole){
+  targetRole=(targetRole==='admin')?'admin':'chef';
+  if(targetRole==='admin'){
+    if(!isAdmin()){toast('Seul un admin peut ajouter un admin'); return;}
+    if(adminCount()>=2){toast('Maximum 2 admins'); return;}
+  }
+  var nom=prompt('Nom du nouvel accès '+(targetRole==='admin'?'admin':'chef')+' :',''); if(!nom) return;
+  var id='chef_'+Date.now().toString(36);
+  chefUsers.push({id:id,nom:String(nom).trim(),pin:DEFAULT_CHEF_PIN,role:targetRole});
+  addHistoryEntry('Ajout accès '+targetRole+' : '+nom); lsSave(); fbSave(); renderSettings(); toast('Accès ajouté avec PIN par défaut '+DEFAULT_CHEF_PIN);
+}
+function setChefRole(id,newRole){
+  if(!isAdmin()){toast('Seul un admin peut changer les rôles'); return;}
+  var c=chefInfo(id); if(!c) return;
+  newRole=(newRole==='admin')?'admin':'chef';
+  if(newRole==='admin'&&adminCount()>=2){toast('Maximum 2 admins'); return;}
+  if(newRole==='chef'&&c.role==='admin'&&adminCount()<=1){toast('Gardez au moins un admin'); return;}
+  var before=clone(c); c.role=newRole;
+  addHistoryEntry('Changement de rôle : '+c.nom+' → '+(newRole==='admin'?'Admin':'Chef'),before,c);
+  lsSave(); fbSave(); renderSettings(); updateStatusBar(); toast('Rôle modifié');
+}
+function renameChefUser(id){var c=chefInfo(id); if(!c) return; if(c.role==='admin'&&!isAdmin()){toast('Seul un admin peut modifier un admin'); return;} var nom=prompt('Nouveau nom :',c.nom); if(!nom) return; var before=clone(c); c.nom=nom; addHistoryEntry('Renommage accès : '+before.nom+' → '+nom,before,c); lsSave(); fbSave(); renderSettings(); updateHeader(); updateStatusBar();}
+function deleteChefUser(id){var c=chefInfo(id); if(!c) return; if(c.role==='admin'&&!isAdmin()){toast('Seul un admin peut supprimer un admin'); return;} if(c.role==='admin'&&adminCount()<=1){toast('Gardez au moins un admin'); return;} if(chefUsers.length<=1){toast('Gardez au moins un accès'); return;} if(!confirm('Supprimer l\'accès de '+c.nom+' ?')) return; var idx=chefUsers.findIndex(function(x){return x.id===id;}); if(idx<0) return; var before=clone(chefUsers[idx]); chefUsers.splice(idx,1); addHistoryEntry('Suppression accès : '+before.nom,before,null); lsSave(); fbSave(); renderSettings();}
 function addPersonToGroup(group){
   var nom=prompt('Nom de la personne à ajouter dans '+sectionLabel(group)+' :','');
   if(!nom) return;
@@ -1317,11 +1413,12 @@ function updatePersonSection(pid,g){
 }
 
 // ── PIN MODAL ────────────────────────────────────────────────
-function openPinModal(kind,id){pinEditTarget={kind:kind,id:id}; pinEditValue=''; document.getElementById('pm-title').textContent=(kind==='chef'?'PIN chef':'PIN personnel'); document.getElementById('pm-hint').textContent='Entrez un code à 5 chiffres'; document.getElementById('pm-error').textContent=''; updatePmDisplay(); buildPmPad(); document.getElementById('pin-ov').classList.add('on');}
+function pmLen(){return (pinEditTarget&&pinEditTarget.kind==='chef')?CHEF_PIN_LENGTH:PIN_LENGTH;}
+function openPinModal(kind,id){pinEditTarget={kind:kind,id:id}; pinEditValue=''; var L=pmLen(); document.getElementById('pm-title').textContent=(kind==='chef'?'PIN chef / admin':'PIN personnel'); document.getElementById('pm-hint').textContent='Entrez un code à '+L+' chiffres'; document.getElementById('pm-error').textContent=''; updatePmDisplay(); buildPmPad(); document.getElementById('pin-ov').classList.add('on');}
 function buildPmPad(){var pp=document.getElementById('pm-pad'); pp.innerHTML=''; [1,2,3,4,5,6,7,8,9,'',0,'⌫'].forEach(function(v){var b=document.createElement('button'); b.className='pm-btn'; b.textContent=String(v); if(v==='') b.style.visibility='hidden'; else b.onclick=function(){pressPm(v);}; pp.appendChild(b);});}
-function pressPm(v){if(v==='⌫') pinEditValue=pinEditValue.slice(0,-1); else if(pinEditValue.length<PIN_LENGTH) pinEditValue+=String(v); updatePmDisplay(); document.getElementById('pm-error').textContent='';}
-function updatePmDisplay(){for(var i=0;i<PIN_LENGTH;i++) document.getElementById('pd'+i).classList.toggle('filled',i<pinEditValue.length);}
-function savePinModal(){if(!pinEditTarget) return; if(pinEditValue.length!==PIN_LENGTH){document.getElementById('pm-error').textContent='5 chiffres requis'; return;} if(pinEditTarget.kind==='chef'){var c=chefInfo(pinEditTarget.id); if(c){var before=clone(c); c.pin=pinEditValue; addHistoryEntry('Mise à jour PIN chef : '+c.nom,before,c);}} else {var pid=pinEditTarget.id, beforeP=personPins[pid]||null; personPins[pid]=pinEditValue; addHistoryEntry('Mise à jour PIN personnel : '+pinfo(pid).nom,beforeP,pinEditValue);} lsSave(); fbSave(); renderSettings(); closePinModal(); toast('PIN enregistré');}
+function pressPm(v){var L=pmLen(); if(v==='⌫') pinEditValue=pinEditValue.slice(0,-1); else if(pinEditValue.length<L) pinEditValue+=String(v); updatePmDisplay(); document.getElementById('pm-error').textContent='';}
+function updatePmDisplay(){var L=pmLen(); for(var i=0;i<6;i++){var d=document.getElementById('pd'+i); if(!d) continue; d.style.display=(i<L)?'block':'none'; d.classList.toggle('filled',i<pinEditValue.length);}}
+function savePinModal(){if(!pinEditTarget) return; var L=pmLen(); if(pinEditValue.length!==L){document.getElementById('pm-error').textContent=L+' chiffres requis'; return;} if(pinEditTarget.kind==='chef'){var c=chefInfo(pinEditTarget.id); if(c){if(c.role==='admin'&&!isAdmin()){toast('Seul un admin peut modifier un admin'); closePinModal(); return;} var before=clone(c); c.pin=pinEditValue; addHistoryEntry('Mise à jour PIN : '+c.nom,before,c);}} else {var pid=pinEditTarget.id, beforeP=personPins[pid]||null; personPins[pid]=pinEditValue; addHistoryEntry('Mise à jour PIN personnel : '+pinfo(pid).nom,beforeP,pinEditValue);} lsSave(); fbSave(); renderSettings(); closePinModal(); toast('PIN enregistré');}
 function closePinModal(e){if(e&&e.target!==document.getElementById('pin-ov')) return; document.getElementById('pin-ov').classList.remove('on'); pinEditTarget=null; pinEditValue='';}
 
 // ── HISTORY ──────────────────────────────────────────────────
@@ -1365,7 +1462,7 @@ function doPrint(){
 lsLoad();
 migrateState();
 var sess=lsLoadSession();
-if(sess&&sess.role&&sess.userId){role=sess.role; userId=sess.userId; if((role==='chef'&&chefInfo(userId))||(role==='personnel'&&pinfo(userId).id===userId)){document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.add('show'); initApp();}}
+if(sess&&sess.role&&sess.userId){role=sess.role; userId=sess.userId; if(((role==='chef'||role==='admin')&&chefInfo(userId))||(role==='personnel'&&pinfo(userId).id===userId)){document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.add('show'); initApp();}}
 window.addEventListener('load', function(){initFirebase(); if(!wkMon) updateStatusBar();});
 document.addEventListener('keydown', function(e){
   var tag=(document.activeElement&&document.activeElement.tagName||'').toLowerCase();
