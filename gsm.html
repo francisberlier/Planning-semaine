@@ -1214,7 +1214,7 @@ function renderEditor(){
     setTimeout(function(){restoreEditorScrollState(editorScroll);},0);
     return;
   }
-  var html=suggestionsHtml+'<div class="editor-sheet"><div class="editor-row-header"><div>Type de tâche</div><div>Heures</div><div>N° devis</div><div>Description devis</div><div>Désignation mobilier</div><div>Couleur</div><div title="Ajouter une tâche">+</div><div title="Supprimer la tâche">×</div></div>';
+  var html=suggestionsHtml+'<div class="editor-sheet"><div class="editor-row-header"><div>Type de tâche</div><div>Heures</div><div>N° devis</div><div>Description devis</div><div>LOT</div><div>Couleur</div><div title="Ajouter une tâche">+</div><div title="Supprimer la tâche">×</div></div>';
   html+=editorTasks.map(function(t,i){
     var noC=NOCH[t.type];
     return '<div class="editor-row">'
@@ -1222,7 +1222,7 @@ function renderEditor(){
       +'<div class="editor-hours-inline"><input type="number" step="0.25" min="0.25" value="'+t.h+'" onchange="setEditorHours('+i+',this.value)"/></div>'
       +'<div><input placeholder="N° devis" '+(noC?'disabled':'')+' value="'+escAttr(t.num||'')+'" oninput="setEditorField('+i+',\'num\',this.value)"/></div>'
       +'<div><input placeholder="Description devis" '+(noC?'disabled':'')+' value="'+escAttr(t.nom||'')+'" oninput="setEditorField('+i+',\'nom\',this.value)"/></div>'
-      +'<div><input placeholder="Désignation mobilier" '+(noC?'disabled':'')+' value="'+escAttr(t.mbl||'')+'" oninput="setEditorField('+i+',\'mbl\',this.value)"/></div>'
+      +'<div><input placeholder="LOT" '+(noC?'disabled':'')+' value="'+escAttr(t.mbl||'')+'" oninput="setEditorField('+i+',\'mbl\',this.value)"/></div>'
       +'<div>'+(noC?'<div class="editor-muted">—</div>':'<div class="row-colors">'+PALETTE.map(function(c,idx){var on=(t.colorIdx===idx)||(t.colorIdx==null&&t.num&&cColorOverride[t.num]===idx);return '<div class="color-swatch" onclick="setEditorColor('+i+','+idx+')" style="background:'+c.bg+';border-color:'+(on?c.brd:'#e2e8f0')+';box-shadow:'+(on?'0 0 0 2px '+c.brd:'none')+'">'+(on?'<span style="font-size:10px;color:'+c.fg+';font-weight:900">✓</span>':'')+'</div>';}).join('')+'</div>')+'</div>'
       +'<button class="row-action add" onclick="addEditorTask('+i+')" title="Ajouter une tâche">+</button>'
       +'<button class="row-action del" onclick="removeEditorTask('+i+')" title="Supprimer cette tâche">×</button>'
@@ -1497,7 +1497,7 @@ function renderExport(){
 function doSaveJSON(){var data={version:8,savedAt:new Date().toISOString(),planning:planning,pointage:pointage,cColorOverride:cColorOverride,people:PERS,personPins:personPins,chefUsers:chefUsers,meta:appMeta}; var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='planning_verbruggen_S'+isoWeek(wkMon)+'_'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('Sauvegarde téléchargée');}
 function doLoadJSON(input){var file=input.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(ev){try{var d=JSON.parse(ev.target.result); if(d.planning) planning=d.planning; if(d.pointage) pointage=d.pointage; if(d.extraPointage) legacyExtraPointage=d.extraPointage; if(d.cColorOverride) cColorOverride=d.cColorOverride; if(d.people) PERS=d.people; if(d.personPins) personPins=d.personPins; if(d.chefUsers) chefUsers=d.chefUsers; else if(d.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(d.chefPin)||DEFAULT_CHEF_PIN}]; if(d.meta) appMeta=ensureMeta(d.meta); migrateState(); lsSave(); fbSave(); renderCurrentTab(); updateStatusBar(); toast('Sauvegarde chargée');}catch(e){toast('Fichier invalide');}}; r.readAsText(file); input.value='';}
 function doExportCSV(){
-  var rows=[['Semaine','Personne','Jour','Date','Type','N Chantier','Client','Meuble','Heures prévues','Heures pointées','Nature']];
+  var rows=[['Semaine','Personne','Jour','Date','Type','N Chantier','Client','LOT','Heures prévues','Heures pointées','Nature']];
   PERS.forEach(function(p){for(var di=0;di<6;di++){syncPointageDay(p.id,di,true); var day=getPointageDay(p.id,di); (day.items||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type,it.num||'',it.nom||'',it.mbl||'',roundQuarter(it.plannedH||0),roundQuarter(it.h||0),'planning']);}); (day.extras||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),'',it.num||'',it.nom||'',it.mbl||'',0,roundQuarter(it.h||0),'imprévu']);}); }});
   var csv=rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(';');}).join('\r\n');
   var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='pointage_S'+isoWeek(wkMon)+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('CSV téléchargé');

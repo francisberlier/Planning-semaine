@@ -178,6 +178,24 @@ input,select{font-size:14px}
 .dash-table.dash-12 th,.dash-table.dash-12 td{text-align:center;padding:6px 8px}
 .dash-table.dash-12 th:first-child,.dash-table.dash-12 td:first-child{text-align:left}
 .dash-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:middle}
+.dash-arrow{display:inline-block;width:14px;color:#64748b;font-weight:800}
+.chantier-block{background:#f8fafc;border-radius:10px;padding:10px 16px;margin-bottom:10px}
+.chantier-block:last-child{margin-bottom:0}
+.chantier-head{display:flex;justify-content:space-between;align-items:center;font-size:15px;padding:4px 0;user-select:none}
+.chantier-head:hover{color:var(--bleu2)}
+.chantier-total{font-size:17px;font-weight:900;color:var(--bleu);font-variant-numeric:tabular-nums}
+.cdet-postes{padding:6px 4px 2px}
+.poste-row{display:grid;grid-template-columns:18px 18px 1fr 120px 70px;align-items:center;padding:7px 8px;border-radius:8px;cursor:pointer;user-select:none;font-size:13.5px;gap:4px}
+.poste-row:hover{background:#eff6ff}
+.poste-name{font-weight:600;color:#1e293b}
+.poste-h{text-align:right;font-weight:800;color:var(--bleu);font-variant-numeric:tabular-nums}
+.poste-bar{padding-right:8px}
+.lot-list{padding:2px 0 8px 40px;margin-bottom:4px}
+.lot-row{display:grid;grid-template-columns:1fr 120px 70px;align-items:center;padding:4px 8px;font-size:12.5px;color:#475569;border-bottom:1px dashed #e2e8f0;gap:4px}
+.lot-row:last-child{border-bottom:none}
+.lot-name{padding-left:6px}
+.lot-h{text-align:right;font-weight:700;color:var(--bleu);font-variant-numeric:tabular-nums}
+@media (max-width:900px){.poste-row{grid-template-columns:18px 18px 1fr 70px;}.poste-bar{display:none}.lot-row{grid-template-columns:1fr 70px}.lot-row .lot-bar{display:none}}
 .toggle-active{display:inline-flex;align-items:center;gap:7px;border:none;border-radius:999px;padding:5px 12px 5px 6px;font-size:12px;font-weight:800;cursor:pointer;transition:all .18s;white-space:nowrap}
 .toggle-active .knob{width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s}
 .toggle-active.on{background:#16a34a;color:#fff}
@@ -1313,7 +1331,7 @@ function renderEditor(){
     setTimeout(function(){restoreEditorScrollState(editorScroll);},0);
     return;
   }
-  var html=suggestionsHtml+'<div class="editor-sheet"><div class="editor-row-header"><div>Type de tâche</div><div>Heures</div><div>N° devis</div><div>Description devis</div><div>Désignation mobilier</div><div>Couleur</div><div title="Ajouter une tâche">+</div><div title="Supprimer la tâche">×</div></div>';
+  var html=suggestionsHtml+'<div class="editor-sheet"><div class="editor-row-header"><div>Type de tâche</div><div>Heures</div><div>N° devis</div><div>Description devis</div><div>LOT</div><div>Couleur</div><div title="Ajouter une tâche">+</div><div title="Supprimer la tâche">×</div></div>';
   html+=editorTasks.map(function(t,i){
     var noC=NOCH[t.type];
     return '<div class="editor-row">'
@@ -1321,7 +1339,7 @@ function renderEditor(){
       +'<div class="editor-hours-inline"><input type="number" step="0.25" min="0.25" value="'+t.h+'" onchange="setEditorHours('+i+',this.value)"/></div>'
       +'<div><input placeholder="N° devis" '+(noC?'disabled':'')+' value="'+escAttr(t.num||'')+'" oninput="setEditorField('+i+',\'num\',this.value)"/></div>'
       +'<div><input placeholder="Description devis" '+(noC?'disabled':'')+' value="'+escAttr(t.nom||'')+'" oninput="setEditorField('+i+',\'nom\',this.value)"/></div>'
-      +'<div><input placeholder="Désignation mobilier" '+(noC?'disabled':'')+' value="'+escAttr(t.mbl||'')+'" oninput="setEditorField('+i+',\'mbl\',this.value)"/></div>'
+      +'<div><input placeholder="LOT" '+(noC?'disabled':'')+' value="'+escAttr(t.mbl||'')+'" oninput="setEditorField('+i+',\'mbl\',this.value)"/></div>'
       +'<div>'+(noC?'<div class="editor-muted">—</div>':'<div class="row-colors">'+PALETTE.map(function(c,idx){var on=(t.colorIdx===idx)||(t.colorIdx==null&&t.num&&cColorOverride[t.num]===idx);return '<div class="color-swatch" onclick="setEditorColor('+i+','+idx+')" style="background:'+c.bg+';border-color:'+(on?c.brd:'#e2e8f0')+';box-shadow:'+(on?'0 0 0 2px '+c.brd:'none')+'">'+(on?'<span style="font-size:10px;color:'+c.fg+';font-weight:900">✓</span>':'')+'</div>';}).join('')+'</div>')+'</div>'
       +'<button class="row-action add" onclick="addEditorTask('+i+')" title="Ajouter une tâche">+</button>'
       +'<button class="row-action del" onclick="removeEditorTask('+i+')" title="Supprimer cette tâche">×</button>'
@@ -1477,8 +1495,8 @@ function dashboardAggregate(){
   var MNAMES=['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
   var months=[]; for(var k=11;k>=0;k--){var d=new Date(curYear,curMonth-k,1); months.push({y:d.getFullYear(),m:d.getMonth(),key:d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2),lbl:MNAMES[d.getMonth()]+' '+String(d.getFullYear()).slice(-2)});}
   var persons={}, chantiers={};
-  function ensureP(pid){if(!persons[pid])persons[pid]={week:0,month:0,year:0,work:0,abs:0,m12:{}}; return persons[pid];}
-  function ensureC(num){if(!chantiers[num])chantiers[num]={week:0,month:0,year:0,total:0,m12:{},nom:''}; return chantiers[num];}
+  function ensureP(pid){if(!persons[pid])persons[pid]={week:0,month:0,year:0,work:0,abs:0,conges:0,m12:{}}; return persons[pid];}
+  function ensureC(num){if(!chantiers[num])chantiers[num]={week:0,month:0,year:0,total:0,m12:{},nom:'',byPoste:{},byLot:{},byPosteLot:{}}; return chantiers[num];}
   Object.keys(planning||{}).forEach(function(wk){
     var mon=new Date(wk); if(isNaN(mon)) return;
     var wkY=mon.getFullYear(), wkM=mon.getMonth();
@@ -1493,17 +1511,26 @@ function dashboardAggregate(){
         var tasks=tasksFromDayObj(days[di]);
         tasks.forEach(function(t){
           var h=roundQuarter(t.h); if(h<=0) return;
-          var isAbs=!!NOCH[t.type];
           var P=ensureP(pid);
           if(inThisWeek)P.week+=h; if(inThisMonth)P.month+=h; if(inThisYear)P.year+=h;
-          if(isAbs)P.abs+=h; else P.work+=h;
+          // Catégorisation : Travail (M,A,F,T,P,B) — Absences (CE,ML) — Congés/Vacances (V,C)
+          var typ=t.type||'';
+          if(typ==='V'||typ==='C') P.conges+=h;
+          else if(typ==='CE'||typ==='ML') P.abs+=h;
+          else P.work+=h; // M, A, F, T, P, B
           P.m12[ym]=(P.m12[ym]||0)+h;
-          // chantiers: only real work with a num
-          if(!isAbs){
+          // chantiers: only real work with a num (not absences, not congés)
+          var isWork=!(typ==='V'||typ==='C'||typ==='CE'||typ==='ML');
+          if(isWork){
             var num=String(t.num||'').trim(); if(num){
               var C=ensureC(num); if(t.nom&&!C.nom)C.nom=t.nom;
               if(inThisWeek)C.week+=h; if(inThisMonth)C.month+=h; if(inThisYear)C.year+=h; C.total+=h;
               C.m12[ym]=(C.m12[ym]||0)+h;
+              C.byPoste[typ]=(C.byPoste[typ]||0)+h;
+              var lot=String(t.mbl||'').trim()||'(sans LOT)';
+              C.byLot[lot]=(C.byLot[lot]||0)+h;
+              if(!C.byPosteLot[typ]) C.byPosteLot[typ]={};
+              C.byPosteLot[typ][lot]=(C.byPosteLot[typ][lot]||0)+h;
             }
           }
         });
@@ -1516,6 +1543,50 @@ function dashBar(val,max,color){
   var pct=max>0?Math.round((val/max)*100):0;
   return '<div style="background:#eef2f7;border-radius:6px;height:10px;overflow:hidden;min-width:60px"><div style="height:100%;width:'+pct+'%;background:'+(color||'#2563eb')+'"></div></div>';
 }
+function chantierDetailHtml(C,safeId){
+  var posteOrder=['M','A','F','T','P','B'];
+  var maxP=0; posteOrder.forEach(function(t){var v=C.byPoste[t]||0; if(v>maxP)maxP=v;});
+  var html='<div class="cdet-postes">';
+  var anyPoste=false;
+  posteOrder.forEach(function(t){
+    var v=C.byPoste[t]||0; if(v<=0) return;
+    anyPoste=true; var ti=tinfo(t);
+    var posteId=safeId+'_p_'+t;
+    // Poste row (clickable to expand LOTs)
+    html+='<div class="poste-row" onclick="togglePosteDetail(\''+posteId+'\')">'
+      +'<span class="dash-arrow" id="ar_'+posteId+'">▸</span>'
+      +'<span class="dash-dot" style="background:'+ti.col+'"></span>'
+      +'<span class="poste-name">'+escAttr(ti.lbl)+'</span>'
+      +'<span class="poste-bar">'+dashBar(v,maxP,ti.col)+'</span>'
+      +'<span class="poste-h">'+fmtH(v)+'</span>'
+      +'</div>';
+    // LOT detail row (hidden by default)
+    var lots=(C.byPosteLot[t]||{});
+    var lkeys=Object.keys(lots).sort(function(a,b){return lots[b]-lots[a];});
+    var maxL=0; lkeys.forEach(function(k){if(lots[k]>maxL)maxL=lots[k];});
+    html+='<div class="lot-list" id="'+posteId+'" style="display:none">';
+    if(!lkeys.length) html+='<div class="lot-row" style="color:#94a3b8">Aucun LOT.</div>';
+    lkeys.forEach(function(k){var v2=lots[k]; html+='<div class="lot-row"><span class="lot-name">'+escAttr(k)+'</span><span class="lot-bar">'+dashBar(v2,maxL,ti.col)+'</span><span class="lot-h">'+fmtH(v2)+'</span></div>';});
+    html+='</div>';
+  });
+  if(!anyPoste) html+='<div style="color:#94a3b8;padding:6px 0">Aucune heure encodée.</div>';
+  html+='</div>';
+  return html;
+}
+function togglePosteDetail(id){
+  var box=document.getElementById(id); var ar=document.getElementById('ar_'+id);
+  if(!box) return;
+  var open=box.style.display!=='none';
+  box.style.display=open?'none':'block';
+  if(ar) ar.textContent=open?'▸':'▾';
+}
+function toggleChantierBlock(id){
+  var box=document.getElementById(id); var ar=document.getElementById('ar_'+id);
+  if(!box) return;
+  var open=box.style.display!=='none';
+  box.style.display=open?'none':'block';
+  if(ar) ar.textContent=open?'▸':'▾';
+}
 function renderDashboard(){
   var el=document.getElementById('tab-dashboard'); if(!el) return;
   var agg=dashboardAggregate();
@@ -1525,12 +1596,14 @@ function renderDashboard(){
   // ── PAR PERSONNE ──
   var pers=activePeople().slice();
   var maxYear=1; pers.forEach(function(p){var d=agg.persons[p.id]; if(d&&d.year>maxYear)maxYear=d.year;});
-  html+='<div class="dash-box"><h3>👥 Par personne</h3><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Personne</th><th>Semaine</th><th>Mois</th><th>Année</th><th>Travail</th><th>Absences</th><th>Charge année</th></tr></thead><tbody>';
+  html+='<div class="dash-box"><h3>👥 Par personne</h3><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Personne</th><th>Semaine</th><th>Mois</th><th>Année</th><th>Heures prestées</th><th>Absences</th><th>Congés &amp; vacances</th><th>Charge année</th></tr></thead><tbody>';
   pers.forEach(function(p){
-    var d=agg.persons[p.id]||{week:0,month:0,year:0,work:0,abs:0};
+    var d=agg.persons[p.id]||{week:0,month:0,year:0,work:0,abs:0,conges:0};
     html+='<tr><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+'</td>'
       +'<td>'+fmtH(d.week)+'</td><td>'+fmtH(d.month)+'</td><td><b>'+fmtH(d.year)+'</b></td>'
-      +'<td style="color:#16a34a">'+fmtH(d.work)+'</td><td style="color:#b45309">'+fmtH(d.abs)+'</td>'
+      +'<td style="color:#16a34a">'+fmtH(d.work)+'</td>'
+      +'<td style="color:#b91c1c">'+fmtH(d.abs)+'</td>'
+      +'<td style="color:#b45309">'+fmtH(d.conges)+'</td>'
       +'<td>'+dashBar(d.year,maxYear,tcol(p.g))+'</td></tr>';
   });
   html+='</tbody></table></div></div>';
@@ -1549,29 +1622,34 @@ function renderDashboard(){
 
   // ── PAR CHANTIER ──
   var cnums=Object.keys(agg.chantiers).sort(function(a,b){return agg.chantiers[b].total-agg.chantiers[a].total;});
-  var maxC=1; cnums.forEach(function(n){if(agg.chantiers[n].year>maxC)maxC=agg.chantiers[n].year;});
-  html+='<div class="dash-box"><h3>🏗 Par chantier</h3>';
+  var maxC=1; cnums.forEach(function(n){if(agg.chantiers[n].total>maxC)maxC=agg.chantiers[n].total;});
+  html+='<div class="dash-box"><h3>🏗 Par chantier · totaux</h3>';
   if(!cnums.length) html+='<div class="hist-empty">Aucune heure de chantier enregistrée.</div>';
   else{
-    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Chantier</th><th>Client</th><th>Semaine</th><th>Mois</th><th>Année</th><th>Charge année</th></tr></thead><tbody>';
+    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Chantier</th><th>Client</th><th>Total</th><th>Charge</th></tr></thead><tbody>';
     cnums.forEach(function(n){var C=agg.chantiers[n];var col=PALETTE[(cColorOverride[n]||0)%PALETTE.length]||{brd:'#2563eb'};
-      html+='<tr><td><b>'+escAttr(n)+'</b></td><td>'+escAttr(C.nom||'')+'</td><td>'+fmtH(C.week)+'</td><td>'+fmtH(C.month)+'</td><td><b>'+fmtH(C.year)+'</b></td><td>'+dashBar(C.year,maxC,col.brd)+'</td></tr>';
+      html+='<tr><td><b>'+escAttr(n)+'</b></td><td>'+escAttr(C.nom||'')+'</td><td><b>'+fmtH(C.total)+'</b></td><td>'+dashBar(C.total,maxC,col.brd)+'</td></tr>';
     });
     html+='</tbody></table></div>';
   }
   html+='</div>';
 
-  // ── PAR CHANTIER — 12 MOIS ──
+  // ── DÉTAIL PAR CHANTIER (postes + LOT, dépliable) ──
   if(cnums.length){
-    html+='<div class="dash-box"><h3>🏗 Par chantier · 12 derniers mois</h3><div class="dash-table-wrap"><table class="dash-table dash-12"><thead><tr><th>Chantier</th>';
-    agg.months.forEach(function(mo){html+='<th>'+mo.lbl+'</th>';});
-    html+='<th>Total</th></tr></thead><tbody>';
-    cnums.forEach(function(n){var C=agg.chantiers[n];var tot=0;
-      html+='<tr><td><b>'+escAttr(n)+'</b>'+(C.nom?' <span style="color:#94a3b8;font-size:11px">'+escAttr(C.nom)+'</span>':'')+'</td>';
-      agg.months.forEach(function(mo){var v=(C.m12&&C.m12[mo.key])||0; tot+=v; html+='<td>'+(v?fmtHShort(v):'·')+'</td>';});
-      html+='<td><b>'+fmtH(tot)+'</b></td></tr>';
+    html+='<div class="dash-box"><h3>🏗 Détail par chantier — postes &amp; LOT</h3><p style="font-size:12px;color:#64748b;margin-bottom:10px">Cliquez un chantier pour voir ses postes, puis un poste pour voir ses LOT.</p>';
+    cnums.forEach(function(n){
+      var C=agg.chantiers[n];
+      var col=PALETTE[(cColorOverride[n]||0)%PALETTE.length]||{brd:'#2563eb'};
+      var safeId='cdet_'+String(n).replace(/[^a-z0-9]/gi,'_');
+      html+='<div class="chantier-block" style="border-left:4px solid '+col.brd+'">';
+      html+='<div class="chantier-head" onclick="toggleChantierBlock(\''+safeId+'\')" style="cursor:pointer">'
+        +'<div><span class="dash-arrow" id="ar_'+safeId+'">▸</span> <b>'+escAttr(n)+'</b>'+(C.nom?' <span style="color:#64748b;font-weight:600">'+escAttr(C.nom)+'</span>':'')+'</div>'
+        +'<div class="chantier-total">'+fmtH(C.total)+'</div>'
+        +'</div>';
+      html+='<div id="'+safeId+'" style="display:none">'+chantierDetailHtml(C,safeId)+'</div>';
+      html+='</div>';
     });
-    html+='</tbody></table></div></div>';
+    html+='</div>';
   }
 
   html+='</div>';
@@ -1690,7 +1768,7 @@ function renderExport(){
 function doSaveJSON(){var data={version:8,savedAt:new Date().toISOString(),planning:planning,pointage:pointage,cColorOverride:cColorOverride,people:PERS,personPins:personPins,chefUsers:chefUsers,meta:appMeta}; var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='planning_verbruggen_S'+isoWeek(wkMon)+'_'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('Sauvegarde téléchargée');}
 function doLoadJSON(input){var file=input.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(ev){try{var d=JSON.parse(ev.target.result); if(d.planning) planning=d.planning; if(d.pointage) pointage=d.pointage; if(d.extraPointage) legacyExtraPointage=d.extraPointage; if(d.cColorOverride) cColorOverride=d.cColorOverride; if(d.people) PERS=d.people; if(d.personPins) personPins=d.personPins; if(d.chefUsers) chefUsers=d.chefUsers; else if(d.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(d.chefPin)||DEFAULT_CHEF_PIN}]; if(d.meta) appMeta=ensureMeta(d.meta); migrateState(); lsSave(); fbSave(); renderCurrentTab(); updateStatusBar(); toast('Sauvegarde chargée');}catch(e){toast('Fichier invalide');}}; r.readAsText(file); input.value='';}
 function doExportCSV(){
-  var rows=[['Semaine','Personne','Jour','Date','Type','N Chantier','Client','Meuble','Heures prévues','Heures pointées','Nature']];
+  var rows=[['Semaine','Personne','Jour','Date','Type','N Chantier','Client','LOT','Heures prévues','Heures pointées','Nature']];
   PERS.forEach(function(p){for(var di=0;di<6;di++){syncPointageDay(p.id,di,true); var day=getPointageDay(p.id,di); (day.items||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type,it.num||'',it.nom||'',it.mbl||'',roundQuarter(it.plannedH||0),roundQuarter(it.h||0),'planning']);}); (day.extras||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),'',it.num||'',it.nom||'',it.mbl||'',0,roundQuarter(it.h||0),'imprévu']);}); }});
   var csv=rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(';');}).join('\r\n');
   var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='pointage_S'+isoWeek(wkMon)+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('CSV téléchargé');
