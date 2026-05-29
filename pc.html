@@ -93,14 +93,14 @@ input,select{font-size:14px}
 .day-total{padding:2px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:800}
 .day-total.warn{background:#fff7ed;color:#c2410c}
 .day-total.ok{background:#dcfce7;color:#166534}
-.day-bars{height:180px;display:flex;flex-direction:column;gap:8px}
-.task-mini{padding:10px 8px;border-radius:8px;font-size:11px;line-height:1.2;border:1px solid transparent;display:flex;align-items:stretch;overflow:hidden;min-height:18px}
+.day-bars{display:flex;flex-direction:column;gap:6px}
+.task-mini{padding:8px 8px;border-radius:8px;font-size:11px;line-height:1.2;border:1px solid transparent;display:flex;align-items:center;overflow:hidden;min-height:28px}
 .task-mini.task-clip-src{box-shadow:inset 0 0 0 2px #2563eb}
 .task-mini:last-child{margin-bottom:0}
 .task-mini .tm-wrap{display:flex;flex-direction:column;justify-content:center;min-width:0;width:100%}
 .task-mini .tm-main{display:block;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.day-gap{flex:1 0 0;border:1px dashed #dbe3ee;border-radius:8px;background:repeating-linear-gradient(-45deg,#f8fafc,#f8fafc 8px,#f1f5f9 8px,#f1f5f9 16px)}
-.task-empty{font-size:10px;color:#94a3b8;font-style:italic;padding-top:10px}
+.day-gap{border:1px dashed #dbe3ee;border-radius:8px;background:repeating-linear-gradient(-45deg,#f8fafc,#f8fafc 8px,#f1f5f9 8px,#f1f5f9 16px)}
+.task-empty{font-size:10px;color:#94a3b8;font-style:italic;padding:6px 0}
 .top-actions{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;flex-wrap:wrap}
 .top-actions button{padding:5px 10px;border-radius:8px;border:1px solid #86efac;background:#fff;color:#15803d;font-size:11px;font-weight:700}
 
@@ -294,8 +294,8 @@ input,select{font-size:14px}
   #statusbar .item.flex{min-width:120px}
   #ptbl td.pname{min-width:138px;max-width:138px;width:138px}
   #ptbl td.daycell{min-width:128px;max-width:128px;width:128px}
-  .day-bars{height:132px;gap:6px}
-  .task-mini{padding:6px 5px;font-size:10px}
+  .day-bars{gap:4px}
+  .task-mini{padding:5px 5px;font-size:10px;min-height:22px}
   .task-mini b{font-size:10px}
 }
 </style>
@@ -1109,8 +1109,9 @@ function taskMiniHtml(t){
 function taskMiniProportionalHtml(t,pid,di,taskIndex){
   var c=taskColor(t), txt=taskDisplayLabel(t,true);
   var h=Math.max(0.25,parseFloat(t.h)||0);
+  var hpx=Math.max(30,Math.round(h*10)+22); // hauteur compacte : 22px de base + 10px/h, min 30px
   var cls='task-mini'+(sameClipboardSource(pid,di,t.id)?' task-clip-src':'');
-  return '<div class="'+cls+'" draggable="true" onclick="return handleTaskBlockClick(event,\''+pid+'\','+di+','+taskIndex+')" ondragstart="return handleTaskDragStart(event,\''+pid+'\','+di+','+taskIndex+')" ondragend="return handleTaskDragEnd(event)" style="background:'+c.bg+';color:'+c.fg+';border-color:'+c.brd+';flex:'+h+' 0 0"><div class="tm-wrap"><b class="tm-main">'+txt+'</b></div></div>';
+  return '<div class="'+cls+'" draggable="true" onclick="return handleTaskBlockClick(event,\''+pid+'\','+di+','+taskIndex+')" ondragstart="return handleTaskDragStart(event,\''+pid+'\','+di+','+taskIndex+')" ondragend="return handleTaskDragEnd(event)" style="background:'+c.bg+';color:'+c.fg+';border-color:'+c.brd+';height:'+hpx+'px"><div class="tm-wrap"><b class="tm-main">'+txt+'</b></div></div>';
 }
 function sameClipboardSource(pid,di,taskId){
   return !!(dayClipboard&&dayClipboard.source&&dayClipboard.source.pid===pid&&parseInt(dayClipboard.source.di,10)===parseInt(di,10)&&dayClipboard.source.wk===wkKey()&&(taskId==null||dayClipboard.source.taskId===taskId));
@@ -1291,7 +1292,7 @@ function renderPlanning(){
       else{
         html+='<div class="day-bars">';
         tasks.forEach(function(t,taskIndex){html+=taskMiniProportionalHtml(t,p.id,di,taskIndex);});
-        if(total<8) html+='<div class="day-gap" style="flex:'+(8-total)+' 0 0"></div>';
+        if(total<8){var gap=8-total; html+='<div class="day-gap" style="height:'+Math.round(gap*10)+'px"></div>';}
         html+='</div>';
       }
       html+='</td>';
