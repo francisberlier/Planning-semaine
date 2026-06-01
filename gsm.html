@@ -287,6 +287,7 @@ input,select{font-size:14px}
 }
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 </head>
 <body>
@@ -296,10 +297,15 @@ input,select{font-size:14px}
   <div class="login-sub">Planning &amp; Pointage</div>
   <div class="login-card">
     <h3>Qui êtes-vous ?</h3>
-    <div class="role-btns">
-      <div class="role-btn" id="btn-admin" onclick="selectRole('admin')"><span class="icon">👑</span>Admin</div>
-      <div class="role-btn" id="btn-chef" onclick="selectRole('chef')"><span class="icon">👔</span>Chef</div>
+    <div class="role-btns" style="grid-template-columns:1fr 1fr">
+      <div class="role-btn" id="btn-bureau" onclick="selectRole('bureau')"><span class="icon">🔑</span>Bureau<br><span style="font-size:10px;font-weight:600;opacity:.75">Admin / Chef</span></div>
       <div class="role-btn" id="btn-pers" onclick="selectRole('personnel')"><span class="icon">👷</span>Personnel</div>
+    </div>
+    <div id="bureau-form" style="display:none;margin-bottom:8px">
+      <input id="bureau-email" type="email" autocomplete="username" placeholder="Adresse e-mail" style="width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:14px;margin-bottom:8px" oninput="onBureauInput()"/>
+      <input id="bureau-pwd" type="password" autocomplete="current-password" placeholder="Mot de passe" style="width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:14px;margin-bottom:6px" oninput="onBureauInput()" onkeydown="if(event.key==='Enter')doBureauLogin()"/>
+      <div id="bureau-error" style="color:#dc2626;font-size:12px;text-align:center;min-height:18px;font-weight:600"></div>
+      <div style="font-size:11px;color:#64748b;text-align:center;margin-top:4px">Vos accès sont gérés via Firebase Auth.</div>
     </div>
     <div id="chef-select-wrap" style="display:none;margin-bottom:14px">
       <select id="chef-select" onchange="onChefSelect(this.value)" style="width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:15px;font-weight:700;color:var(--bleu);background:#fff"></select>
@@ -397,6 +403,33 @@ input,select{font-size:14px}
 <script>
 // ── FIREBASE ─────────────────────────────────────────────────
 var db=null, fbConnected=false;
+var fbAuth=null, bureauUser=null;
+var INITIAL_EMAIL_ROLES = {
+  'mv@verbruggen-group.eu':'chef',
+  'lbo@verbruggen-group.eu':'admin',
+  'francisberlier@skynet.be':'admin',
+  'djeva@skynet.be':'chef',
+  'francisberlier@verbruggen-group.eu':'admin',
+  'delbarre@verbruggen-group.eu':'chef',
+  'vf@verbruggen-group.eu':'chef'
+};
+function sanitizeEmailKey(email){return String(email||'').toLowerCase().replace(/[.@#$\[\]\/]/g,'_');}
+function ensureBureauRole(user){
+  return new Promise(function(resolve){
+    var email=String(user.email||'').toLowerCase(); if(!email||!db){resolve(null); return;}
+    var key=sanitizeEmailKey(email);
+    db.ref('data/userRoles/'+key).once('value').then(function(snap){
+      var v=snap.val();
+      if(v && (v.role==='admin'||v.role==='chef')) { resolve(v.role); return; }
+      var initRole=INITIAL_EMAIL_ROLES[email];
+      if(initRole==='admin'||initRole==='chef'){
+        var entry={email:email,role:initRole,nom:email.split('@')[0]};
+        db.ref('data/userRoles/'+key).set(entry).catch(function(){});
+        resolve(initRole);
+      } else { resolve(null); }
+    }).catch(function(){resolve(null);});
+  });
+}
 function initFirebase(){
   try{
     var firebaseConfig={
@@ -410,6 +443,26 @@ function initFirebase(){
     };
     if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     db=firebase.database();
+    fbAuth=firebase.auth();
+    fbAuth.onAuthStateChanged(function(user){
+      if(user){
+        bureauUser=user;
+        ensureBureauRole(user).then(function(r){
+          if(r){
+            role=r; userId='bureau_'+user.uid;
+            var ls=document.getElementById('login-screen');
+            if(ls && !ls.classList.contains('hidden')){
+              ls.classList.add('hidden');
+              document.getElementById('app').classList.add('show');
+              if(!wkMon) wkMon=getMonday(new Date());
+              buildTabs(); if(!currentTab) currentTab=isManager()?'planning':'pointage'; renderCurrentTab(); updateStatusBar();
+            } else { updateStatusBar(); }
+          }
+        });
+      } else {
+        bureauUser=null;
+      }
+    });
     db.ref('.info/connected').on('value', function(snap){
       fbConnected=snap.val()===true;
       var badge=document.getElementById('fb-status');
@@ -567,7 +620,7 @@ function pinLen(){return (role==='admin'||role==='chef')?CHEF_PIN_LENGTH:PIN_LEN
 function fmtH(v){v=roundQuarter(v);var s=v.toFixed(2).replace('.',',');s=s.replace(/,00$/,'').replace(/(,\d)0$/,'$1');return s+' h';}
 function fmtHShort(v){return fmtH(v).replace(' ','');}
 function ensureMeta(meta){meta=meta||{};return {lastModifiedAt:meta.lastModifiedAt||null,lastModifiedBy:meta.lastModifiedBy||'',history:Array.isArray(meta.history)?meta.history:[]};}
-function currentDisplayName(){if(isManager()&&userId){var c=chefInfo(userId);return c?c.nom:'Chef';} if(role==='personnel'&&userId){return pinfo(userId).nom;} return 'Système';}
+function currentDisplayName(){if(bureauUser){var em=bureauUser.email||''; var nm=em.split('@')[0]||em; return nm.charAt(0).toUpperCase()+nm.slice(1);} if(isManager()&&userId){var c=chefInfo(userId);return c?c.nom:'Chef';} if(role==='personnel'&&userId){return pinfo(userId).nom;} return 'Système';}
 function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.colorIdx==null?'':t.colorIdx].join('|');}
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
@@ -894,13 +947,64 @@ setInterval(checkAutoSync,30000);
 // ── LOGIN ────────────────────────────────────────────────────
 function selectRole(r){
   role=r; loginSelectedId=null; loginPin='';
-  document.getElementById('btn-admin').classList.toggle('active',r==='admin');
-  document.getElementById('btn-chef').classList.toggle('active',r==='chef');
+  document.getElementById('btn-bureau').classList.toggle('active',r==='bureau');
   document.getElementById('btn-pers').classList.toggle('active',r==='personnel');
+  document.getElementById('login-pin-error').textContent='';
+  var bf=document.getElementById('bureau-form'), be=document.getElementById('bureau-error');
+  if(r==='bureau'){
+    bf.style.display='block'; if(be) be.textContent='';
+    document.getElementById('user-list').style.display='none';
+    document.getElementById('chef-select-wrap').style.display='none';
+    document.getElementById('pin-section').style.display='none';
+    document.getElementById('btn-login').textContent='Se connecter';
+    document.getElementById('btn-login').onclick=doBureauLogin;
+    document.getElementById('btn-login').disabled=true;
+    setTimeout(function(){var el=document.getElementById('bureau-email'); if(el) el.focus();},80);
+    return;
+  }
+  bf.style.display='none';
+  document.getElementById('btn-login').textContent='Entrer';
+  document.getElementById('btn-login').onclick=doLogin;
   buildUserList();
   document.getElementById('pin-section').style.display='none';
   document.getElementById('btn-login').disabled=true;
-  document.getElementById('login-pin-error').textContent='';
+}
+function onBureauInput(){
+  var e=document.getElementById('bureau-email').value.trim();
+  var p=document.getElementById('bureau-pwd').value;
+  document.getElementById('btn-login').disabled=!(e && p.length>=4);
+  document.getElementById('bureau-error').textContent='';
+}
+function doBureauLogin(){
+  var email=document.getElementById('bureau-email').value.trim().toLowerCase();
+  var pwd=document.getElementById('bureau-pwd').value;
+  var errEl=document.getElementById('bureau-error');
+  if(!email||!pwd){errEl.textContent='Email et mot de passe requis'; return;}
+  if(!fbAuth){errEl.textContent='Authentification non disponible (réessayez)'; return;}
+  document.getElementById('btn-login').disabled=true;
+  errEl.textContent='Connexion…';
+  fbAuth.signInWithEmailAndPassword(email,pwd).then(function(cred){
+    return ensureBureauRole(cred.user).then(function(r){
+      if(!r){
+        errEl.textContent='Accès refusé : compte non autorisé sur cette application.';
+        fbAuth.signOut(); return;
+      }
+      bureauUser=cred.user; role=r; userId='bureau_'+cred.user.uid;
+      errEl.textContent='';
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app').classList.add('show');
+      if(!wkMon) wkMon=getMonday(new Date());
+      buildTabs(); currentTab=currentTab||'planning'; renderCurrentTab(); updateStatusBar();
+    });
+  }).catch(function(err){
+    var code=(err&&err.code)||'';
+    var msg='Email ou mot de passe incorrect';
+    if(code==='auth/too-many-requests') msg='Trop de tentatives. Réessayez plus tard.';
+    else if(code==='auth/network-request-failed') msg='Pas de réseau';
+    else if(code==='auth/invalid-email') msg='Email invalide';
+    errEl.textContent=msg;
+    document.getElementById('btn-login').disabled=false;
+  });
 }
 function buildUserList(){
   var list=document.getElementById('user-list');
@@ -990,16 +1094,25 @@ function doLogin(){
 }
 function logout(){dayClipboard=null;
   if(!confirm('Se déconnecter ?')) return;
-  role=null; userId=null; loginPin=''; loginSelectedId=null;
+  var wasBureau=!!bureauUser;
+  role=null; userId=null; loginPin=''; loginSelectedId=null; bureauUser=null;
   try{localStorage.removeItem('vb_session_v7'); localStorage.removeItem('vb_session');}catch(e){}
+  if(wasBureau && fbAuth){ try{fbAuth.signOut();}catch(e){} }
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('app').classList.remove('show');
-  document.getElementById('btn-admin').classList.remove('active');
-  document.getElementById('btn-chef').classList.remove('active');
+  var bb=document.getElementById('btn-bureau'); if(bb) bb.classList.remove('active');
+  var ba=document.getElementById('btn-admin'); if(ba) ba.classList.remove('active');
+  var bc=document.getElementById('btn-chef'); if(bc) bc.classList.remove('active');
   document.getElementById('btn-pers').classList.remove('active');
   document.getElementById('user-list').style.display='none';
   var sw=document.getElementById('chef-select-wrap'); if(sw) sw.style.display='none';
+  var bf=document.getElementById('bureau-form'); if(bf) bf.style.display='none';
+  var bep=document.getElementById('bureau-email'); if(bep) bep.value='';
+  var bpp=document.getElementById('bureau-pwd'); if(bpp) bpp.value='';
   document.getElementById('pin-section').style.display='none';
+  document.getElementById('btn-login').textContent='Entrer';
+  document.getElementById('btn-login').onclick=doLogin;
+  document.getElementById('btn-login').disabled=true;
   updateStatusBar();
 }
 
@@ -1388,29 +1501,14 @@ function renderSettings(){
   var admins=chefUsers.filter(function(c){return c.role==='admin';});
   var chefs=chefUsers.filter(function(c){return c.role!=='admin';});
 
-  html+=`<div class="setting-box"><h3>Connecté</h3><div class="setting-row"><div class="meta"><b>${escAttr(currentDisplayName())}</b><span>${role==='admin'?'👑 Admin':'👔 Chef'}</span></div></div></div>`;
+  html+=`<div class="setting-box"><h3>Connecté</h3><div class="setting-row"><div class="meta"><b>${escAttr(currentDisplayName())}</b><span>${role==='admin'?'👑 Admin':'👔 Chef'}${bureauUser?' · '+escAttr(bureauUser.email||''):''}</span></div></div></div>`;
 
-  html+=`<div class="setting-box"><h3>👑 Administrateurs <span style="font-size:11px;color:#94a3b8;font-weight:600">(max 2)</span></h3>`;
-  admins.forEach(function(c){
-    var tools='';
-    if(isAdmin()){
-      tools=`<button class="mini-btn" onclick="renameChefUser('${c.id}')">Renommer</button><button class="mini-btn" onclick="openPinModal('chef','${c.id}')">PIN</button>`;
-      if(admins.length>1) tools+=`<button class="mini-btn" onclick="setChefRole('${c.id}','chef')">↓ Chef</button>`;
-      if(chefUsers.length>1&&admins.length>1) tools+=`<button class="mini-btn" style="color:#dc2626" onclick="deleteChefUser('${c.id}')">Suppr.</button>`;
-    } else { tools=`<span style="font-size:11px;color:#94a3b8">Géré par un admin</span>`; }
-    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:#92400e">${escAttr(c.nom||'?').charAt(0)}</div><div class="meta"><b>${escAttr(c.nom)}</b><span>${c.pin?'PIN défini':'PIN manquant'}</span></div><div class="person-tools">${tools}</div></div>`;
-  });
-  if(isAdmin()&&admins.length<2) html+=`<button class="add-btn" onclick="addChefUser('admin')">+ Ajouter un admin</button>`;
+  html+=`<div class="setting-box"><h3>🔑 Comptes bureau</h3><p>Connexion par e-mail + mot de passe via Firebase Auth. ${isAdmin()?'Vous pouvez modifier les rôles ici.':'Seul un admin peut modifier les rôles.'} La création d'un compte (e-mail + mot de passe) se fait dans la <b>console Firebase</b>.</p>`;
+  html+=`<div id="bureau-roles-list"><div style="font-size:12px;color:#94a3b8;padding:6px 0">Chargement…</div></div>`;
+  if(isAdmin()){
+    html+=`<button class="add-btn" onclick="addBureauRole()">+ Pré-autoriser un e-mail</button>`;
+  }
   html+=`</div>`;
-
-  html+=`<div class="setting-box"><h3>👔 Chefs de production</h3>`;
-  chefs.forEach(function(c){
-    var tools=`<button class="mini-btn" onclick="renameChefUser('${c.id}')">Renommer</button><button class="mini-btn" onclick="openPinModal('chef','${c.id}')">PIN</button>`;
-    if(isAdmin()&&admins.length<2) tools+=`<button class="mini-btn" onclick="setChefRole('${c.id}','admin')">↑ Admin</button>`;
-    tools+=`<button class="mini-btn" style="color:#dc2626" onclick="deleteChefUser('${c.id}')">Suppr.</button>`;
-    html+=`<div class="setting-row"><div class="user-avatar-sm" style="background:#1a3a5c">${escAttr(c.nom||'?').charAt(0)}</div><div class="meta"><b>${escAttr(c.nom)}</b><span>${c.pin?'PIN défini':'PIN manquant'}</span></div><div class="person-tools">${tools}</div></div>`;
-  });
-  html+=`<button class="add-btn" onclick="addChefUser('chef')">+ Ajouter un chef</button></div>`;
 
   html+=`<div class="setting-box"><h3>Personnel</h3><p>Ajoutez un nom dans une section, modifiez la section, le n° GSM, le type par défaut et le PIN. L'interrupteur <b>Actif/Inactif</b> masque une personne du planning et du pointage sans perdre ses données.</p>`;
   html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button><button onclick="addPersonToGroup('B')">+ Bureau</button></div>`;
@@ -1424,6 +1522,53 @@ function renderSettings(){
   });
   html+=`</div>`;
   el.innerHTML=html;
+  loadBureauRoles();
+}
+function loadBureauRoles(){
+  var box=document.getElementById('bureau-roles-list'); if(!box) return;
+  if(!db){box.innerHTML='<div style="font-size:12px;color:#94a3b8;padding:6px 0">Firebase non connecté.</div>'; return;}
+  db.ref('data/userRoles').once('value').then(function(snap){
+    var roles=snap.val()||{};
+    var seenEmails={};
+    var rows=[];
+    Object.keys(roles).forEach(function(k){var v=roles[k]; if(v && v.email){seenEmails[v.email.toLowerCase()]=1; rows.push({key:k,email:v.email,role:v.role||'chef',connected:true});}});
+    Object.keys(INITIAL_EMAIL_ROLES).forEach(function(em){if(!seenEmails[em.toLowerCase()]){rows.push({key:sanitizeEmailKey(em),email:em,role:INITIAL_EMAIL_ROLES[em],connected:false});}});
+    rows.sort(function(a,b){if(a.role!==b.role) return a.role==='admin'?-1:1; return a.email.localeCompare(b.email);});
+    if(!rows.length){box.innerHTML='<div style="font-size:12px;color:#94a3b8;padding:6px 0">Aucun compte autorisé.</div>'; return;}
+    var html='';
+    rows.forEach(function(r){
+      var roleBadge=r.role==='admin'?'<span class="pin-tag" style="background:#fef3c7;border-color:#fcd34d;color:#92400e">👑 Admin</span>':'<span class="pin-tag" style="background:#dbeafe;border-color:#93c5fd;color:#1d4ed8">👔 Chef</span>';
+      var statusBadge=r.connected?'':' <span class="pin-tag">Pas encore connecté</span>';
+      var tools='';
+      if(isAdmin() && (bureauUser&&bureauUser.email!==r.email)){
+        if(r.role==='admin') tools='<button class="mini-btn" onclick="changeBureauRole(\''+escAttr(r.key)+'\',\''+escAttr(r.email)+'\',\'chef\')">↓ Chef</button>';
+        else tools='<button class="mini-btn" onclick="changeBureauRole(\''+escAttr(r.key)+'\',\''+escAttr(r.email)+'\',\'admin\')">↑ Admin</button>';
+        tools+='<button class="mini-btn" style="color:#dc2626" onclick="removeBureauRole(\''+escAttr(r.key)+'\',\''+escAttr(r.email)+'\')">Retirer</button>';
+      }
+      html+='<div class="setting-row"><div class="user-avatar-sm" style="background:'+(r.role==='admin'?'#92400e':'#1a3a5c')+'">'+escAttr(r.email).charAt(0).toUpperCase()+'</div><div class="meta"><b>'+escAttr(r.email)+'</b><span>'+roleBadge+statusBadge+'</span></div><div class="person-tools">'+tools+'</div></div>';
+    });
+    box.innerHTML=html;
+  }).catch(function(){box.innerHTML='<div style="font-size:12px;color:#dc2626;padding:6px 0">Erreur de lecture Firebase.</div>';});
+}
+function addBureauRole(){
+  if(!isAdmin()){toast('Réservé aux admins'); return;}
+  var em=prompt('E-mail à pré-autoriser :\n\n(Le compte doit aussi être créé dans la console Firebase.)');
+  if(!em) return; em=String(em).trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){toast('E-mail invalide'); return;}
+  var r=prompt('Rôle ? (tapez "admin" ou "chef")','chef');
+  if(!r) return; r=String(r).trim().toLowerCase(); if(r!=='admin'&&r!=='chef'){toast('Rôle invalide'); return;}
+  var key=sanitizeEmailKey(em);
+  db.ref('data/userRoles/'+key).set({email:em,role:r,nom:em.split('@')[0]}).then(function(){toast('Compte pré-autorisé'); loadBureauRoles();}).catch(function(){toast('Erreur Firebase');});
+}
+function changeBureauRole(key,email,newRole){
+  if(!isAdmin()){toast('Réservé aux admins'); return;}
+  if(!confirm('Changer le rôle de '+email+' en '+(newRole==='admin'?'admin':'chef')+' ?')) return;
+  db.ref('data/userRoles/'+key).update({role:newRole}).then(function(){toast('Rôle mis à jour'); loadBureauRoles();}).catch(function(){toast('Erreur Firebase');});
+}
+function removeBureauRole(key,email){
+  if(!isAdmin()){toast('Réservé aux admins'); return;}
+  if(!confirm('Retirer '+email+' de la liste des comptes autorisés ?')) return;
+  db.ref('data/userRoles/'+key).remove().then(function(){toast('Compte retiré'); loadBureauRoles();}).catch(function(){toast('Erreur Firebase');});
 }
 function addChefUser(targetRole){
   targetRole=(targetRole==='admin')?'admin':'chef';
