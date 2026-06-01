@@ -159,7 +159,7 @@ input,select{font-size:14px}
 .setting-row .meta{flex:1}
 .setting-row .meta b{display:block;font-size:13px}
 .setting-row .meta span{font-size:11px;color:#64748b}
-.person-editor{display:grid;grid-template-columns:minmax(130px,1.1fr) 110px 120px 110px auto auto;gap:8px;align-items:center;flex:1;min-width:0}
+.person-editor{display:grid;grid-template-columns:minmax(110px,1fr) 100px 110px minmax(140px,1.2fr) 110px auto;gap:8px;align-items:center;flex:1;min-width:0}
 .person-editor input,.person-editor select{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;font-size:12px;width:100%;background:#fff}
 .person-tools{display:flex;gap:8px;flex-wrap:wrap}
 .setting-addbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
@@ -309,30 +309,14 @@ input,select{font-size:14px}
   <div class="login-title">Verbruggen</div>
   <div class="login-sub">Planning &amp; Pointage</div>
   <div class="login-card">
-    <h3>Qui êtes-vous ?</h3>
-    <div class="role-btns" style="grid-template-columns:1fr 1fr">
-      <div class="role-btn" id="btn-bureau" onclick="selectRole('bureau')"><span class="icon">🔑</span>Bureau<br><span style="font-size:10px;font-weight:600;opacity:.75">Admin / Chef</span></div>
-      <div class="role-btn" id="btn-pers" onclick="selectRole('personnel')"><span class="icon">👷</span>Personnel</div>
-    </div>
-    <div id="bureau-form" style="display:none;margin-bottom:8px">
-      <input id="bureau-email" type="email" autocomplete="username" placeholder="Adresse e-mail" style="width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:14px;margin-bottom:8px" oninput="onBureauInput()"/>
+    <h3>Connexion</h3>
+    <div id="bureau-form" style="margin-bottom:8px">
+      <input id="bureau-email" type="email" autocomplete="username" placeholder="Adresse e-mail" style="width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:14px;margin-bottom:8px" oninput="onBureauInput()" onkeydown="if(event.key==='Enter')document.getElementById('bureau-pwd').focus()"/>
       <input id="bureau-pwd" type="password" autocomplete="current-password" placeholder="Mot de passe" style="width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:14px;margin-bottom:6px" oninput="onBureauInput()" onkeydown="if(event.key==='Enter')doBureauLogin()"/>
       <div id="bureau-error" style="color:#dc2626;font-size:12px;text-align:center;min-height:18px;font-weight:600"></div>
-      <div style="font-size:11px;color:#64748b;text-align:center;margin-top:4px">Vos accès sont gérés via Firebase Auth.</div>
     </div>
-    <div id="chef-select-wrap" style="display:none;margin-bottom:14px">
-      <select id="chef-select" onchange="onChefSelect(this.value)" style="width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--bd);font-size:15px;font-weight:700;color:var(--bleu);background:#fff"></select>
-    </div>
-    <div id="user-list"></div>
-    <div id="pin-section">
-      <div class="pin-display">
-        <div class="pin-dot" id="ld0"></div><div class="pin-dot" id="ld1"></div><div class="pin-dot" id="ld2"></div><div class="pin-dot" id="ld3"></div><div class="pin-dot" id="ld4"></div><div class="pin-dot" id="ld5"></div>
-      </div>
-      <div class="pin-pad" id="login-pin-pad"></div>
-      <div class="pin-error" id="login-pin-error"></div>
-      <div class="pin-hint" id="login-pin-hint"></div>
-    </div>
-    <button class="btn-login" id="btn-login" onclick="doLogin()" disabled>Entrer</button>
+    <button class="btn-login" id="btn-login" onclick="doBureauLogin()" disabled>Se connecter</button>
+    <div style="font-size:11px;color:#64748b;text-align:center;margin-top:10px">En cas d'oubli de mot de passe, contactez un administrateur.</div>
   </div>
 </div>
 
@@ -415,20 +399,23 @@ var INITIAL_EMAIL_ROLES = {
 };
 function sanitizeEmailKey(email){return String(email||'').toLowerCase().replace(/[.@#$\[\]\/]/g,'_');}
 function ensureBureauRole(user){
-  // Lit le rôle depuis Firebase ; à défaut, le bootstrap depuis INITIAL_EMAIL_ROLES ; sinon refuse l'accès
+  // Lit le rôle admin/chef depuis Firebase ; à défaut un email connu est traité comme PERSONNEL si lié à un ouvrier ; sinon refus
   return new Promise(function(resolve){
     var email=String(user.email||'').toLowerCase(); if(!email||!db){resolve(null); return;}
     var key=sanitizeEmailKey(email);
     db.ref('data/userRoles/'+key).once('value').then(function(snap){
       var v=snap.val();
       if(v && (v.role==='admin'||v.role==='chef')) { resolve(v.role); return; }
-      // Bootstrap
       var initRole=INITIAL_EMAIL_ROLES[email];
       if(initRole==='admin'||initRole==='chef'){
         var entry={email:email,role:initRole,nom:email.split('@')[0]};
         db.ref('data/userRoles/'+key).set(entry).catch(function(){});
-        resolve(initRole);
-      } else { resolve(null); }
+        resolve(initRole); return;
+      }
+      // Pas admin/chef → personnel si l'email est lié à un ouvrier
+      var p=personByEmail(email);
+      if(p) { resolve('personnel'); return; }
+      resolve(null);
     }).catch(function(){resolve(null);});
   });
 }
@@ -500,14 +487,19 @@ function initFirebase(){
         bureauUser=user;
         ensureBureauRole(user).then(function(r){
           if(r){
-            role=r; userId='bureau_'+user.uid;
-            // Auto-enter app if currently on login screen
+            role=r;
+            if(r==='personnel'){
+              var p=personByEmail(user.email||'');
+              if(p) userId=p.id; else { fbAuth.signOut(); return; }
+            } else {
+              userId='bureau_'+user.uid;
+            }
             var ls=document.getElementById('login-screen');
             if(ls && !ls.classList.contains('hidden')){
               ls.classList.add('hidden');
               document.getElementById('app').classList.add('show');
               if(!wkMon) wkMon=getMonday(new Date());
-              buildTabs(); if(!currentTab) currentTab='planning'; renderCurrentTab(); updateStatusBar();
+              buildTabs(); if(!currentTab) currentTab=isManager()?'planning':'pointage'; renderCurrentTab(); updateStatusBar();
             } else { updateStatusBar(); }
           }
         });
@@ -679,7 +671,8 @@ function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'At
 function activePeople(){return PERS.filter(function(p){return p && p.active!==false;});}
 function archivedPeople(){return PERS.filter(function(p){return p && p.active===false;});}
 function sortPeople(){var pos={}; PERSON_ORDER.forEach(function(id,idx){pos[id]=idx;}); var groupOrder={M:1,A:2,F:3,T:4,P:5,B:6}; PERS.sort(function(a,b){var aa=(a&&a.active!==false)?0:1, bb=(b&&b.active!==false)?0:1; if(aa!==bb) return aa-bb; var pa=(pos[a.id]!==undefined)?pos[a.id]:999, pb=(pos[b.id]!==undefined)?pos[b.id]:999; if(pa!==pb) return pa-pb; var ag=groupOrder[(a.g||'').toUpperCase()]||99, bg=groupOrder[(b.g||'').toUpperCase()]||99; if(ag!==bg) return ag-bg; return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});});}
-function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(g!=='B'&&(!GCOL[g]||NOCH[g])) g='P'; var id=p.id||('pers_'+i+'_'+Date.now().toString(36)); var nom=String(p.nom||('Personne '+(i+1))).trim(); if(id==='marco_t'&&nom==='Marco T.') nom='Marco'; var dt=String(p.defaultType||'').toUpperCase(); if(dt&&!(tinfo(dt)&&tinfo(dt).id===dt)) dt=''; return {id:id, nom:nom, g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), defaultType:dt, active:p.active!==false};}
+function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(g!=='B'&&(!GCOL[g]||NOCH[g])) g='P'; var id=p.id||('pers_'+i+'_'+Date.now().toString(36)); var nom=String(p.nom||('Personne '+(i+1))).trim(); if(id==='marco_t'&&nom==='Marco T.') nom='Marco'; var dt=String(p.defaultType||'').toUpperCase(); if(dt&&!(tinfo(dt)&&tinfo(dt).id===dt)) dt=''; var email=String(p.email||'').trim().toLowerCase(); return {id:id, nom:nom, g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), email:email, defaultType:dt, active:p.active!==false};}
+function personByEmail(email){if(!email) return null; email=String(email).toLowerCase(); for(var i=0;i<PERS.length;i++){if(PERS[i].email && PERS[i].email===email && PERS[i].active!==false) return PERS[i];} return null;}
 function makePersonId(name){return 'pers_'+String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,18)+'_'+Date.now().toString(36).slice(-4);}
 function manualSave(label){lsSave(); fbSave(); updateStatusBar(); toast((label||'Données')+' sauvegardé');}
 function weekChantierCatalog(){
@@ -1011,31 +1004,7 @@ function checkAutoSync(){
 setInterval(checkAutoSync,30000);
 
 // ── LOGIN ────────────────────────────────────────────────────
-function selectRole(r){
-  role=r; loginSelectedId=null; loginPin='';
-  document.getElementById('btn-bureau').classList.toggle('active',r==='bureau');
-  document.getElementById('btn-pers').classList.toggle('active',r==='personnel');
-  document.getElementById('login-pin-error').textContent='';
-  var bf=document.getElementById('bureau-form'), be=document.getElementById('bureau-error');
-  if(r==='bureau'){
-    bf.style.display='block'; if(be) be.textContent='';
-    document.getElementById('user-list').style.display='none';
-    document.getElementById('chef-select-wrap').style.display='none';
-    document.getElementById('pin-section').style.display='none';
-    document.getElementById('btn-login').textContent='Se connecter';
-    document.getElementById('btn-login').onclick=doBureauLogin;
-    document.getElementById('btn-login').disabled=true;
-    setTimeout(function(){var el=document.getElementById('bureau-email'); if(el) el.focus();},80);
-    return;
-  }
-  // personnel
-  bf.style.display='none';
-  document.getElementById('btn-login').textContent='Entrer';
-  document.getElementById('btn-login').onclick=doLogin;
-  buildUserList();
-  document.getElementById('pin-section').style.display='none';
-  document.getElementById('btn-login').disabled=true;
-}
+// ── LOGIN (Firebase Auth unifié) ────────────────────────────
 function onBureauInput(){
   var e=document.getElementById('bureau-email').value.trim();
   var p=document.getElementById('bureau-pwd').value;
@@ -1047,7 +1016,7 @@ function doBureauLogin(){
   var pwd=document.getElementById('bureau-pwd').value;
   var errEl=document.getElementById('bureau-error');
   if(!email||!pwd){errEl.textContent='Email et mot de passe requis'; return;}
-  if(!fbAuth){errEl.textContent='Authentification non disponible (réessayez dans 2 sec)'; return;}
+  if(!fbAuth){errEl.textContent='Authentification non disponible (réessayez)'; return;}
   document.getElementById('btn-login').disabled=true;
   errEl.textContent='Connexion…';
   fbAuth.signInWithEmailAndPassword(email,pwd).then(function(cred){
@@ -1056,12 +1025,19 @@ function doBureauLogin(){
         errEl.textContent='Accès refusé : compte non autorisé sur cette application.';
         fbAuth.signOut(); return;
       }
-      bureauUser=cred.user; role=r; userId='bureau_'+cred.user.uid;
+      bureauUser=cred.user; role=r;
+      if(r==='personnel'){
+        var p=personByEmail(cred.user.email||'');
+        userId=p?p.id:null;
+        if(!userId){ errEl.textContent='Email non lié à un ouvrier. Demandez à un admin.'; fbAuth.signOut(); return; }
+      } else {
+        userId='bureau_'+cred.user.uid;
+      }
       errEl.textContent='';
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('app').classList.add('show');
       if(!wkMon) wkMon=getMonday(new Date());
-      buildTabs(); currentTab=currentTab||'planning'; renderCurrentTab(); updateStatusBar();
+      buildTabs(); currentTab=currentTab||(isManager()?'planning':'pointage'); renderCurrentTab(); updateStatusBar();
     });
   }).catch(function(err){
     var code=(err&&err.code)||'';
@@ -1164,25 +1140,15 @@ function doLogin(){
 function logout(){
   dayClipboard=null;
   if(!confirm('Se déconnecter ?')) return;
-  var wasBureau=!!bureauUser;
-  role=null; userId=null; loginPin=''; loginSelectedId=null; bureauUser=null;
+  role=null; userId=null; bureauUser=null;
   try{localStorage.removeItem('vb_session_v7'); localStorage.removeItem('vb_session');}catch(e){}
-  if(wasBureau && fbAuth){ try{fbAuth.signOut();}catch(e){} }
+  if(fbAuth){ try{fbAuth.signOut();}catch(e){} }
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('app').classList.remove('show');
-  var bb=document.getElementById('btn-bureau'); if(bb) bb.classList.remove('active');
-  var ba=document.getElementById('btn-admin'); if(ba) ba.classList.remove('active');
-  var bc=document.getElementById('btn-chef'); if(bc) bc.classList.remove('active');
-  document.getElementById('btn-pers').classList.remove('active');
-  document.getElementById('user-list').style.display='none';
-  var sw=document.getElementById('chef-select-wrap'); if(sw) sw.style.display='none';
-  var bf=document.getElementById('bureau-form'); if(bf) bf.style.display='none';
   var bep=document.getElementById('bureau-email'); if(bep) bep.value='';
   var bpp=document.getElementById('bureau-pwd'); if(bpp) bpp.value='';
-  document.getElementById('pin-section').style.display='none';
-  document.getElementById('btn-login').textContent='Entrer';
-  document.getElementById('btn-login').onclick=doLogin;
   document.getElementById('btn-login').disabled=true;
+  var be=document.getElementById('bureau-error'); if(be) be.textContent='';
   updateStatusBar();
 }
 // ── APP INIT / TABS ──────────────────────────────────────────
@@ -1786,7 +1752,7 @@ function renderSettings(){
   var el=document.getElementById('tab-settings'); if(!el) return;
   var active=activePeople(), archived=archivedPeople();
   var html='';
-  html+=`<div class="setting-box"><h3>Accès et sécurité</h3><p>Les comptes <b>bureau</b> (admin + chef) se connectent avec leur <b>e-mail + mot de passe</b> via Firebase Authentication. Le personnel se connecte par <b>nom + code PIN à 5 chiffres</b> comme avant.</p>`;
+  html+=`<div class="setting-box"><h3>Accès et sécurité</h3><p>Tous les utilisateurs (admin, chef et personnel) se connectent par <b>e-mail + mot de passe</b> via Firebase Authentication. Les rôles <b>admin</b> et <b>chef</b> sont gérés ci-dessous. Tout utilisateur connecté qui n'apparaît pas dans cette liste est considéré comme <b>personnel</b> et doit avoir son e-mail renseigné dans la section Personnel.</p>`;
   html+=`<div class="setting-row"><div class="meta"><b>Connecté en tant que</b><span>${escAttr(currentDisplayName())}${bureauUser?' · '+escAttr(bureauUser.email||''):''}</span></div><span class="pin-tag">${role==='admin'?'👑 Admin':'👔 Chef'}</span></div>`;
   html+=`</div>`;
 
@@ -1798,14 +1764,14 @@ function renderSettings(){
   }
   html+=`</div>`;
 
-  html+=`<div class="setting-box"><h3>Personnel</h3><p>Ajoutez un nom dans une section, modifiez le n° GSM, le type par défaut et le PIN. Activez ou désactivez chaque personne avec l'interrupteur : une personne <b>inactive</b> n'apparaît plus dans le planning ni le pointage, mais ses données sont conservées.</p>`;
+  html+=`<div class="setting-box"><h3>Personnel</h3><p>Renseignez l'<b>e-mail Firebase</b> de chaque ouvrier (créez d'abord son compte dans la console Firebase). Sans e-mail défini, l'ouvrier ne pourra pas se connecter. L'interrupteur Actif/Inactif masque une personne du planning et du pointage sans perdre ses données.</p>`;
   html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button><button onclick="addPersonToGroup('B')">+ Bureau</button></div>`;
   PERS.forEach(function(p){
     var on=p.active!==false;
     var col=tcol(p.g); var opts=['M','A','F','T','P','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
     var dtOpts='<option value="">Type auto ('+sectionLabel(p.g)+')</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
     var toggle='<button class="toggle-active '+(on?'on':'off')+'" onclick="togglePersonActive(\''+p.id+'\')" title="'+(on?'Actif — cliquer pour désactiver':'Inactif — cliquer pour activer')+'"><span class="knob"></span><span class="lbl">'+(on?'Actif':'Inactif')+'</span></button>';
-    html+=`<div class="setting-row${on?'':' row-inactive'}"><div class="user-avatar-sm" style="background:${col}">${escAttr(p.nom||'?').charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" />${toggle}<div class="person-tools"><button class="mini-btn" onclick="openPinModal('pers','${p.id}')">${personPins[p.id]?'PIN':'Définir PIN'}</button><button class="mini-btn" onclick="resetPersonPin('${p.id}')">Réinit.</button></div></div></div>`;
+    html+=`<div class="setting-row${on?'':' row-inactive'}"><div class="user-avatar-sm" style="background:${col}">${escAttr(p.nom||'?').charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.email||'')}" placeholder="e-mail Firebase" type="email" onchange="updatePersonEmail('${p.id}',this.value)" /><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" />${toggle}</div></div>`;
   });
   html+=`</div>`;
   el.innerHTML=html;
@@ -1891,6 +1857,16 @@ function addPersonToGroup(group){var nom=prompt('Nom de la personne à ajouter d
 function updatePersonField(pid,field,value){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p[field]=String(value||'').trim(); if(field==='nom'&&!p[field]){toast('Le nom ne peut pas être vide'); p[field]=before[field]; renderSettings(); return;} addHistoryEntry('Mise à jour personnel : '+before.nom+' — '+field,before,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
 function updatePersonSection(pid,g){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.g=String(g||'P').toUpperCase(); p.poste=sectionLabel(p.g); sortPeople(); addHistoryEntry('Changement de section : '+before.nom+' → '+sectionLabel(p.g),before,p); lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();}
 function updatePersonDefaultType(pid,t){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); t=String(t||'').toUpperCase(); if(t&&!(tinfo(t)&&tinfo(t).id===t)) t=''; p.defaultType=t; addHistoryEntry('Type par défaut : '+p.nom+' → '+(t?tinfo(t).lbl:'auto'),before,p); lsSave(); fbSave(); renderSettings(); updateStatusBar();}
+function updatePersonEmail(pid,em){
+  var p=pinfo(pid); if(!p||!p.id) return;
+  em=String(em||'').trim().toLowerCase();
+  if(em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){toast('E-mail invalide'); renderSettings(); return;}
+  // Empêcher les doublons
+  if(em){for(var i=0;i<PERS.length;i++){if(PERS[i].id!==pid && PERS[i].email===em){toast('Cet e-mail est déjà utilisé par '+PERS[i].nom); renderSettings(); return;}}}
+  var before=clone(p); p.email=em;
+  addHistoryEntry('E-mail : '+p.nom+' → '+(em||'(vide)'),before,p);
+  lsSave(); fbSave(); updateStatusBar();
+}
 function togglePersonActive(pid){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=(p.active===false); sortPeople(); addHistoryEntry((p.active?'Activation':'Désactivation')+' personnel : '+p.nom,before,p); if(!p.active&&ptSelPers===pid) ptSelPers=(activePeople()[0]&&activePeople()[0].id)||null; lsSave(); fbSave(); renderSettings(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast(p.nom+(p.active?' activé':' désactivé'));}
 function archivePerson(pid){togglePersonActive(pid);}
 function restorePerson(pid){var p=pinfo(pid); if(p&&p.active===false) togglePersonActive(pid);}
