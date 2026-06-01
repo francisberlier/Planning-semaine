@@ -150,6 +150,9 @@ input,select{font-size:14px}
 .setting-row .meta b{display:block;font-size:13px}
 .setting-row .meta span{font-size:11px;color:#64748b}
 .person-editor{display:grid;grid-template-columns:minmax(110px,1fr) 100px 110px minmax(140px,1.2fr) 110px auto;gap:8px;align-items:center;flex:1;min-width:0}
+.person-editor-head{font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:#94a3b8;font-weight:700;padding:0 4px}
+.setting-row.pers-head{padding:4px 14px 2px;background:transparent;border:none}
+.setting-row.pers-head .person-editor-head>div{padding:0 4px}
 .toggle-active{display:inline-flex;align-items:center;gap:7px;border:none;border-radius:999px;padding:5px 12px 5px 6px;font-size:12px;font-weight:800;cursor:pointer;transition:all .18s;white-space:nowrap}
 .toggle-active .knob{width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .toggle-active.on{background:#16a34a;color:#fff}
@@ -1481,13 +1484,14 @@ function renderSettings(){
 
   html+=`<div class="setting-box"><h3>Personnel</h3><p>Renseignez l'<b>e-mail Firebase</b> de chaque ouvrier (créez d'abord son compte dans la console Firebase). L'interrupteur Actif/Inactif masque une personne sans perdre ses données.</p>`;
   html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button><button onclick="addPersonToGroup('B')">+ Bureau</button></div>`;
+  html+='<div class="setting-row pers-head"><div style="width:32px"></div><div class="person-editor person-editor-head"><div>Nom</div><div>Section</div><div>Type par défaut</div><div>E-mail Firebase</div><div>N° GSM</div><div>Statut</div></div></div>';
   PERS.forEach(function(p){
     var on=p.active!==false;
     var col=tcol(p.g);
     var opts=['M','A','F','T','P','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
-    var dtOpts='<option value="">Type auto ('+sectionLabel(p.g)+')</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
+    var dtOpts='<option value="">—</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
     var toggle='<button class="toggle-active '+(on?'on':'off')+'" onclick="togglePersonActive(\''+p.id+'\')" title="'+(on?'Actif':'Inactif')+'"><span class="knob"></span><span class="lbl">'+(on?'Actif':'Inactif')+'</span></button>';
-    html+=`<div class="setting-row${on?'':' row-inactive'}"><div class="user-avatar-sm" style="background:${col}">${p.nom.charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.email||'')}" placeholder="e-mail Firebase" type="email" onchange="updatePersonEmail('${p.id}',this.value)" /><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" />${toggle}</div></div>`;
+    html+=`<div class="setting-row${on?'':' row-inactive'}"><div class="user-avatar-sm" style="background:${col}">${p.nom.charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut (— = automatique selon la section)" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.email||'')}" placeholder="e-mail Firebase" type="email" onchange="updatePersonEmail('${p.id}',this.value)" /><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" />${toggle}</div></div>`;
   });
   html+=`</div>`;
   el.innerHTML=html;
