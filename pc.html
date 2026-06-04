@@ -1773,67 +1773,108 @@ function tasksFromDayObj(dayObj){
   if(Array.isArray(dayObj.tasks)) return dayObj.tasks.map(sanitizeTask).filter(function(t){return t.h>0;});
   return legacySlotsToTasks(dayObj);
 }
+// Filtre actif pour le Dashboard : 'prod', 'bureau', ou 'all'
+var dashFilter='all';
 function dashboardAggregate(){
-  // Returns {persons:{pid:{week,month,year,work,abs, months12:{ym:h}}}, chantiers:{...}, monthsList:[...]}
+  // Renvoie {persons, chantiers, months, curYear}
+  // Pour chaque entrée, on agrège séparément les heures Production et Bureau.
+  // Les totaux week/month/year/work/abs/conges sont la SOMME selon le filtre actif.
   var now=new Date();
   var curWeekKey=wkMon?wkKey():getMonday(now).toISOString().slice(0,10);
   var refDate=wkMon?new Date(wkMon):now;
   var curYear=refDate.getFullYear();
-  var curMonth=refDate.getMonth(); // 0-11
-  // Build the 12-month window (oldest→newest) ending on the reference month
+  var curMonth=refDate.getMonth();
   var MNAMES=['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
   var months=[]; for(var k=11;k>=0;k--){var d=new Date(curYear,curMonth-k,1); months.push({y:d.getFullYear(),m:d.getMonth(),key:d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2),lbl:MNAMES[d.getMonth()]+' '+String(d.getFullYear()).slice(-2)});}
   var persons={}, chantiers={};
-  function ensureP(pid){if(!persons[pid])persons[pid]={week:0,month:0,year:0,work:0,abs:0,conges:0,m12:{}}; return persons[pid];}
-  function ensureC(num){if(!chantiers[num])chantiers[num]={week:0,month:0,year:0,total:0,m12:{},nom:'',byPoste:{},byLot:{},byPosteLot:{}}; return chantiers[num];}
-  Object.keys(planning||{}).forEach(function(wk){
-    var mon=new Date(wk); if(isNaN(mon)) return;
-    var wkY=mon.getFullYear(), wkM=mon.getMonth();
-    var ym=wkY+'-'+('0'+(wkM+1)).slice(-2);
-    var inThisWeek=(wk===curWeekKey);
-    var inThisYear=(wkY===curYear);
-    var inThisMonth=(wkY===curYear&&wkM===curMonth);
-    var wkData=planning[wk]||{};
-    Object.keys(wkData).forEach(function(pid){
-      var days=wkData[pid]||{};
-      Object.keys(days).forEach(function(di){
-        var tasks=tasksFromDayObj(days[di]);
-        tasks.forEach(function(t){
-          var h=roundQuarter(t.h); if(h<=0) return;
-          var P=ensureP(pid);
-          if(inThisWeek)P.week+=h; if(inThisMonth)P.month+=h; if(inThisYear)P.year+=h;
-          // Catégorisation : Travail (M,A,F,T,P,B) — Absences (CE,ML) — Congés/Vacances (V,C)
-          var typ=t.type||'';
-          if(typ==='V'||typ==='C') P.conges+=h;
-          else if(typ==='CE'||typ==='ML') P.abs+=h;
-          else P.work+=h; // M, A, F, T, P, B
-          P.m12[ym]=(P.m12[ym]||0)+h;
-          // chantiers: only real work with a num (not absences, not congés)
-          var isWork=!(typ==='V'||typ==='C'||typ==='CE'||typ==='ML');
-          if(isWork){
-            var num=String(t.num||'').trim(); if(num){
-              var C=ensureC(num); if(t.nom&&!C.nom)C.nom=t.nom;
-              if(inThisWeek)C.week+=h; if(inThisMonth)C.month+=h; if(inThisYear)C.year+=h; C.total+=h;
-              C.m12[ym]=(C.m12[ym]||0)+h;
-              C.byPoste[typ]=(C.byPoste[typ]||0)+h;
-              var lot=String(t.mbl||'').trim()||'(sans LOT)';
-              C.byLot[lot]=(C.byLot[lot]||0)+h;
-              if(!C.byPosteLot[typ]) C.byPosteLot[typ]={};
-              C.byPosteLot[typ][lot]=(C.byPosteLot[typ][lot]||0)+h;
+  function ensureP(pid){
+    if(!persons[pid]) persons[pid]={
+      week:0,month:0,year:0,work:0,abs:0,conges:0,m12:{},
+      weekProd:0,monthProd:0,yearProd:0,workProd:0,
+      weekBE:0,monthBE:0,yearBE:0,workBE:0
+    };
+    return persons[pid];
+  }
+  function ensureC(num){
+    if(!chantiers[num]) chantiers[num]={
+      week:0,month:0,year:0,total:0,m12:{},nom:'',byPoste:{},byLot:{},byPosteLot:{},
+      totalProd:0,totalBE:0
+    };
+    return chantiers[num];
+  }
+  function scanStore(store, scope){
+    // scope: 'prod' ou 'bureau'
+    Object.keys(store||{}).forEach(function(wk){
+      var mon=new Date(wk); if(isNaN(mon)) return;
+      var wkY=mon.getFullYear(), wkM=mon.getMonth();
+      var ym=wkY+'-'+('0'+(wkM+1)).slice(-2);
+      var inThisWeek=(wk===curWeekKey);
+      var inThisYear=(wkY===curYear);
+      var inThisMonth=(wkY===curYear&&wkM===curMonth);
+      var wkData=store[wk]||{};
+      Object.keys(wkData).forEach(function(pid){
+        var days=wkData[pid]||{};
+        Object.keys(days).forEach(function(di){
+          var tasks=tasksFromDayObj(days[di]);
+          tasks.forEach(function(t){
+            var h=roundQuarter(t.h); if(h<=0) return;
+            var P=ensureP(pid);
+            var typ=t.type||'';
+            // Compteurs par scope
+            if(scope==='prod'){
+              if(inThisWeek)P.weekProd+=h; if(inThisMonth)P.monthProd+=h; if(inThisYear)P.yearProd+=h;
+            } else {
+              if(inThisWeek)P.weekBE+=h; if(inThisMonth)P.monthBE+=h; if(inThisYear)P.yearBE+=h;
             }
-          }
+            // Catégorisation pour les compteurs de travail (utilisée uniquement après filtrage)
+            var isAbs=(typ==='V'||typ==='C'||typ==='CE'||typ==='ML');
+            var addWork=!isAbs;
+            // Selon le filtre, on remplit ou non les agrégats principaux
+            if(dashFilter==='all' || dashFilter===scope){
+              if(inThisWeek)P.week+=h; if(inThisMonth)P.month+=h; if(inThisYear)P.year+=h;
+              if(typ==='V'||typ==='C') P.conges+=h;
+              else if(typ==='CE'||typ==='ML') P.abs+=h;
+              else { P.work+=h; if(scope==='prod') P.workProd+=h; else P.workBE+=h; }
+              P.m12[ym]=(P.m12[ym]||0)+h;
+            } else {
+              // On garde quand même les détails Prod/BE séparés pour info
+              if(addWork && scope==='prod') P.workProd+=h;
+              if(addWork && scope==='bureau') P.workBE+=h;
+            }
+            // chantiers : seules les heures de travail réel (pas d'absences/congés)
+            if(addWork){
+              var num=String(t.num||'').trim();
+              if(num){
+                var C=ensureC(num);
+                if(t.nom&&!C.nom) C.nom=t.nom;
+                if(scope==='prod') C.totalProd+=h; else C.totalBE+=h;
+                if(dashFilter==='all' || dashFilter===scope){
+                  if(inThisWeek)C.week+=h; if(inThisMonth)C.month+=h; if(inThisYear)C.year+=h; C.total+=h;
+                  C.m12[ym]=(C.m12[ym]||0)+h;
+                  C.byPoste[typ]=(C.byPoste[typ]||0)+h;
+                  var lot=String(t.mbl||'').trim()||'(sans LOT)';
+                  C.byLot[lot]=(C.byLot[lot]||0)+h;
+                  if(!C.byPosteLot[typ]) C.byPosteLot[typ]={};
+                  C.byPosteLot[typ][lot]=(C.byPosteLot[typ][lot]||0)+h;
+                }
+              }
+            }
+          });
         });
       });
     });
-  });
-  return {persons:persons,chantiers:chantiers,months:months,curYear:curYear};
+  }
+  scanStore(planning, 'prod');
+  scanStore(planningBureau, 'bureau');
+  return {persons:persons,chantiers:chantiers,months:months,curYear:curYear,filter:dashFilter};
 }
 function dashBar(val,max,color){
   var pct=max>0?Math.round((val/max)*100):0;
   return '<div style="background:#eef2f7;border-radius:6px;height:10px;overflow:hidden;min-width:60px"><div style="height:100%;width:'+pct+'%;background:'+(color||'#2563eb')+'"></div></div>';
 }
 function chantierDetailHtml(C,safeId){
-  var posteOrder=['M','A','F','T','P','G','B'];
+  // Postes Production + Postes Bureau d'étude
+  var posteOrder=['M','A','F','T','P','G','B','D','PL','E','GS','R'];
   var maxP=0; posteOrder.forEach(function(t){var v=C.byPoste[t]||0; if(v>maxP)maxP=v;});
   var html='<div class="cdet-postes">';
   var anyPoste=false;
@@ -1876,16 +1917,34 @@ function toggleChantierBlock(id){
   box.style.display=open?'none':'block';
   if(ar) ar.textContent=open?'▸':'▾';
 }
+function setDashFilter(f){dashFilter=f; renderDashboard();}
 function renderDashboard(){
   var el=document.getElementById('tab-dashboard'); if(!el) return;
   var agg=dashboardAggregate();
+  var showProd=(dashFilter==='all'||dashFilter==='prod');
+  var showBE=(dashFilter==='all'||dashFilter==='bureau');
+  var showBoth=(dashFilter==='all');
+  var filterLbl=(dashFilter==='prod')?'Production':(dashFilter==='bureau')?'Bureau d\'étude':'Production + Bureau';
   var html='<div class="dash-wrap">';
-  html+='<div class="summary-card" style="border-left:4px solid #2563eb"><div><b>📊 Tableau de bord</b><div style="font-size:12px;color:#64748b">Heures du planning · semaine '+isoWeek(wkMon)+' · '+agg.curYear+'</div></div></div>';
+  html+='<div class="summary-card" style="border-left:4px solid #2563eb"><div><b>📊 Tableau de bord</b><div style="font-size:12px;color:#64748b">Heures du planning · semaine '+isoWeek(wkMon)+' · '+agg.curYear+' · <b>'+filterLbl+'</b></div></div></div>';
+
+  // ── FILTRE ──
+  function btn(val,lbl){
+    var on=(dashFilter===val);
+    return '<button onclick="setDashFilter(\''+val+'\')" style="padding:7px 16px;border:1px solid '+(on?'#1d4ed8':'#cbd5e1')+';background:'+(on?'#1d4ed8':'#fff')+';color:'+(on?'#fff':'#334155')+';border-radius:8px;font-weight:'+(on?'700':'600')+';cursor:pointer">'+lbl+'</button>';
+  }
+  html+='<div style="display:flex;gap:8px;padding:8px 0 14px;align-items:center"><span style="font-size:12px;color:#64748b;font-weight:600">Filtre :</span>'+btn('all','Production + Bureau')+btn('prod','Production seul')+btn('bureau','Bureau seul')+'</div>';
 
   // ── PAR PERSONNE ──
-  var pers=activePeople().slice();
+  // Filtrer la liste des personnes selon le filtre actif
+  var allPers=activePeople();
+  var pers=allPers.filter(function(p){
+    if(dashFilter==='prod') return isProductionPerson(p);
+    if(dashFilter==='bureau') return isBureauPerson(p);
+    return true;
+  });
   var maxYear=1; pers.forEach(function(p){var d=agg.persons[p.id]; if(d&&d.year>maxYear)maxYear=d.year;});
-  html+='<div class="dash-box"><h3>👥 Par personne</h3><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Personne</th><th>Semaine</th><th>Mois</th><th>Année</th><th>Heures prestées</th><th>Absences</th><th>Congés &amp; vacances</th><th>Charge année</th></tr></thead><tbody>';
+  html+='<div class="dash-box"><h3>👥 Par personne · '+filterLbl+'</h3><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Personne</th><th>Semaine</th><th>Mois</th><th>Année</th><th>Heures prestées</th><th>Absences</th><th>Congés &amp; vacances</th><th>Charge année</th></tr></thead><tbody>';
   pers.forEach(function(p){
     var d=agg.persons[p.id]||{week:0,month:0,year:0,work:0,abs:0,conges:0};
     html+='<tr><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+'</td>'
@@ -1910,14 +1969,38 @@ function renderDashboard(){
   html+='</tbody></table></div></div>';
 
   // ── PAR CHANTIER ──
-  var cnums=Object.keys(agg.chantiers).sort(function(a,b){return agg.chantiers[b].total-agg.chantiers[a].total;});
-  var maxC=1; cnums.forEach(function(n){if(agg.chantiers[n].total>maxC)maxC=agg.chantiers[n].total;});
+  // Total affiché dépend du filtre. On garde tous les chantiers ayant >0h dans le scope filtré.
+  var cnums=Object.keys(agg.chantiers).filter(function(n){
+    var C=agg.chantiers[n];
+    if(dashFilter==='prod') return C.totalProd>0;
+    if(dashFilter==='bureau') return C.totalBE>0;
+    return (C.totalProd+C.totalBE)>0;
+  }).sort(function(a,b){
+    var A=agg.chantiers[a], B=agg.chantiers[b];
+    var ta=(dashFilter==='prod')?A.totalProd:(dashFilter==='bureau')?A.totalBE:(A.totalProd+A.totalBE);
+    var tb=(dashFilter==='prod')?B.totalProd:(dashFilter==='bureau')?B.totalBE:(B.totalProd+B.totalBE);
+    return tb-ta;
+  });
+  var maxC=1; cnums.forEach(function(n){
+    var C=agg.chantiers[n];
+    var t=(dashFilter==='prod')?C.totalProd:(dashFilter==='bureau')?C.totalBE:(C.totalProd+C.totalBE);
+    if(t>maxC) maxC=t;
+  });
   html+='<div class="dash-box"><h3>🏗 Par chantier · totaux</h3>';
   if(!cnums.length) html+='<div class="hist-empty">Aucune heure de chantier enregistrée.</div>';
   else{
-    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Chantier</th><th>Client</th><th>Total</th><th>Charge</th></tr></thead><tbody>';
-    cnums.forEach(function(n){var C=agg.chantiers[n];var col=PALETTE[(cColorOverride[n]||0)%PALETTE.length]||{brd:'#2563eb'};
-      html+='<tr><td><b>'+escAttr(n)+'</b></td><td>'+escAttr(C.nom||'')+'</td><td><b>'+fmtH(C.total)+'</b></td><td>'+dashBar(C.total,maxC,col.brd)+'</td></tr>';
+    var thProd=showProd?'<th style="color:#16a34a">Production</th>':'';
+    var thBE=showBE?'<th style="color:#4f46e5">Bureau</th>':'';
+    var thTot=showBoth?'<th>Total</th>':'';
+    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Chantier</th><th>Client</th>'+thProd+thBE+thTot+'<th>Charge</th></tr></thead><tbody>';
+    cnums.forEach(function(n){
+      var C=agg.chantiers[n];
+      var col=PALETTE[(cColorOverride[n]||0)%PALETTE.length]||{brd:'#2563eb'};
+      var totDisplayed=(dashFilter==='prod')?C.totalProd:(dashFilter==='bureau')?C.totalBE:(C.totalProd+C.totalBE);
+      var tdProd=showProd?'<td style="color:#16a34a"><b>'+fmtH(C.totalProd)+'</b></td>':'';
+      var tdBE=showBE?'<td style="color:#4f46e5"><b>'+fmtH(C.totalBE)+'</b></td>':'';
+      var tdTot=showBoth?'<td><b>'+fmtH(C.totalProd+C.totalBE)+'</b></td>':'';
+      html+='<tr><td><b>'+escAttr(n)+'</b></td><td>'+escAttr(C.nom||'')+'</td>'+tdProd+tdBE+tdTot+'<td>'+dashBar(totDisplayed,maxC,col.brd)+'</td></tr>';
     });
     html+='</tbody></table></div>';
   }
@@ -1925,15 +2008,16 @@ function renderDashboard(){
 
   // ── DÉTAIL PAR CHANTIER (postes + LOT, dépliable) ──
   if(cnums.length){
-    html+='<div class="dash-box"><h3>🏗 Détail par chantier — postes &amp; LOT</h3><p style="font-size:12px;color:#64748b;margin-bottom:10px">Cliquez un chantier pour voir ses postes, puis un poste pour voir ses LOT.</p>';
+    html+='<div class="dash-box"><h3>🏗 Détail par chantier — postes &amp; LOT</h3><p style="font-size:12px;color:#64748b;margin-bottom:10px">Cliquez un chantier pour voir ses postes, puis un poste pour voir ses LOT. Le détail respecte le filtre actif (<b>'+filterLbl+'</b>).</p>';
     cnums.forEach(function(n){
       var C=agg.chantiers[n];
       var col=PALETTE[(cColorOverride[n]||0)%PALETTE.length]||{brd:'#2563eb'};
       var safeId='cdet_'+String(n).replace(/[^a-z0-9]/gi,'_');
+      var totDisplayed=(dashFilter==='prod')?C.totalProd:(dashFilter==='bureau')?C.totalBE:(C.totalProd+C.totalBE);
       html+='<div class="chantier-block" style="border-left:4px solid '+col.brd+'">';
       html+='<div class="chantier-head" onclick="toggleChantierBlock(\''+safeId+'\')" style="cursor:pointer">'
         +'<div><span class="dash-arrow" id="ar_'+safeId+'">▸</span> <b>'+escAttr(n)+'</b>'+(C.nom?' <span style="color:#64748b;font-weight:600">'+escAttr(C.nom)+'</span>':'')+'</div>'
-        +'<div class="chantier-total">'+fmtH(C.total)+'</div>'
+        +'<div class="chantier-total">'+fmtH(totDisplayed)+'</div>'
         +'</div>';
       html+='<div id="'+safeId+'" style="display:none">'+chantierDetailHtml(C,safeId)+'</div>';
       html+='</div>';
