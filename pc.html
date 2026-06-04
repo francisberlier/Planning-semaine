@@ -1332,6 +1332,7 @@ function copyDayTasks(pid,di){
   dayClipboard={mode:'day',tasks:clone(tasks),source:{pid:pid,di:di,wk:wkKey()},label:pinfo(pid).nom+' — '+DAYS[di]+' '+fmtD(dayDate(di),true)};
   updateStatusBar();
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
+  setTimeout(function(){if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();},50);
   toast('📋 Journée copiée — cliquez une autre date pour coller');
   return true;
 }
@@ -1345,6 +1346,7 @@ function pasteDayTasks(pid,di){
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
+  setTimeout(function(){if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();},50);
   updateStatusBar();
   if(changed) toast('✓ Journée collée');
   else toast('Journée identique, rien à changer');
@@ -1356,6 +1358,7 @@ function copyTaskAt(pid,di,taskIndex){
   dayClipboard={mode:'task',task:clone(t),source:{pid:pid,di:di,taskId:t.id,wk:wkKey()},label:pinfo(pid).nom+' — '+DAYS[di]+' — '+taskDesc(t)};
   updateStatusBar();
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
+  setTimeout(function(){if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();},50);
   toast('📋 Tâche copiée — cliquez une autre date pour coller');
   return true;
 }
@@ -1368,6 +1371,7 @@ function pasteTaskAt(pid,di){
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
+  setTimeout(function(){if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();},50);
   updateStatusBar();
   if(changed) toast('✓ Tâche collée');
   return changed;
@@ -1440,6 +1444,8 @@ function deleteTaskAt(pid,di,taskIndex){
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
+  // Re-rendu différé pour échapper à tout écho Firebase qui arriverait juste après
+  setTimeout(function(){if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();},50);
   updateStatusBar();
   if(changed) toast('🗑 Tâche supprimée');
   return changed;
@@ -1452,6 +1458,7 @@ function deleteDayTasks(pid,di){
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
+  setTimeout(function(){if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();},50);
   updateStatusBar();
   if(changed) toast('🗑 Journée supprimée');
   return changed;
