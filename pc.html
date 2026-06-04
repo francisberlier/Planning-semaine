@@ -735,7 +735,9 @@ function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'At
 function activePeople(){return PERS.filter(function(p){return p && p.active!==false;});}
 function archivedPeople(){return PERS.filter(function(p){return p && p.active===false;});}
 function sortPeople(){var pos={}; PERSON_ORDER.forEach(function(id,idx){pos[id]=idx;}); var groupOrder={M:1,A:2,F:3,T:4,P:5,G:6,B:7}; PERS.sort(function(a,b){var aa=(a&&a.active!==false)?0:1, bb=(b&&b.active!==false)?0:1; if(aa!==bb) return aa-bb; var pa=(pos[a.id]!==undefined)?pos[a.id]:999, pb=(pos[b.id]!==undefined)?pos[b.id]:999; if(pa!==pb) return pa-pb; var ag=groupOrder[(a.g||'').toUpperCase()]||99, bg=groupOrder[(b.g||'').toUpperCase()]||99; if(ag!==bg) return ag-bg; return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});});}
-function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(!GCOL[g]||NOCH[g]) g='P'; var id=p.id||('pers_'+i+'_'+Date.now().toString(36)); var nom=String(p.nom||('Personne '+(i+1))).trim(); if(id==='marco_t'&&nom==='Marco T.') nom='Marco'; var dt=String(p.defaultType||'').toUpperCase(); if(dt&&!(tinfo(dt)&&tinfo(dt).id===dt)) dt=''; var email=String(p.email||'').trim().toLowerCase(); return {id:id, nom:nom, g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), email:email, defaultType:dt, active:p.active!==false};}
+// Sections valides pour les personnes (séparées des types de tâches)
+var VALID_SECTIONS={M:1,A:1,F:1,T:1,P:1,G:1,B:1};
+function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(!VALID_SECTIONS[g]) g='P'; var id=p.id||('pers_'+i+'_'+Date.now().toString(36)); var nom=String(p.nom||('Personne '+(i+1))).trim(); if(id==='marco_t'&&nom==='Marco T.') nom='Marco'; var dt=String(p.defaultType||'').toUpperCase(); if(dt&&!(tinfo(dt)&&tinfo(dt).id===dt)) dt=''; var email=String(p.email||'').trim().toLowerCase(); return {id:id, nom:nom, g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), email:email, defaultType:dt, active:p.active!==false};}
 function personByEmail(email){if(!email) return null; email=String(email).toLowerCase(); for(var i=0;i<PERS.length;i++){if(PERS[i].email && PERS[i].email===email && PERS[i].active!==false) return PERS[i];} return null;}
 function makePersonId(name){return 'pers_'+String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,18)+'_'+Date.now().toString(36).slice(-4);}
 function manualSave(label){lsSave(); fbSave(); updateStatusBar(); toast((label||'Données')+' sauvegardé');}
@@ -1627,12 +1629,18 @@ function renderPointage(){
   }
   var html='';
   if(isManager()){
-    var act=activePeople(); var selId=ptSelPers||((act[0]&&act[0].id)||''); if(selId && !pinfo(selId).active) selId=(act[0]&&act[0].id)||selId;
+    // Cet onglet est le Pointage Production : on n'affiche que les personnes hors Bureau (étanchéité avec Pointage B.E. à venir)
+    var act=activePeople().filter(isProductionPerson);
+    var selId=ptSelPers||((act[0]&&act[0].id)||'');
+    if(selId && !pinfo(selId).active) selId=(act[0]&&act[0].id)||selId;
+    // Si la personne sélectionnée précédemment est Bureau, basculer sur la première Production
+    if(selId && isBureauPerson(pinfo(selId))) selId=(act[0]&&act[0].id)||'';
     html+='<div class="pillbar">';
-    activePeople().forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="ptSelPers=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
+    act.forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="ptSelPers=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
     html+='</div>';
     html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">✓ Reporter tout le pointage validé au planning</button> <span style="font-size:12px;color:#64748b">Auto-synchro chaque jour à 16h si un appareil est ouvert.</span></div>';
-    html+=pointageDetailHtml(selId);
+    if(selId) html+=pointageDetailHtml(selId);
+    else html+='<div style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne en Production. Pour le pointage du Bureau d\'étude, un onglet dédié sera ajouté à l\'étape 3.</div>';
   } else html=pointageDetailHtml(userId);
   el.innerHTML=html;
 }
