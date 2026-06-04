@@ -436,7 +436,7 @@ function applyChantierColorToWeek(num,idxColor){
   num=String(num||'').trim();
   if(!num) return;
   cColorOverride[num]=idxColor;
-  var w=wkKey(), pw=planning[w]||{};
+  var w=wkKey(), pw=activePlanningStore()[w]||{};
   Object.keys(pw).forEach(function(pid){
     Object.keys(pw[pid]||{}).forEach(function(di){
       var day=pw[pid][di];
@@ -649,6 +649,30 @@ var PALETTE=[
 var role=null, userId=null, loginPin='', loginSelectedId=null;
 var wkMon=null, currentTab='';
 var planning={}, pointage={}, planningBureau={}, pointageBureau={}, legacyExtraPointage={}, cColorOverride={}, personPins={}, chefUsers=[], appMeta={lastModifiedAt:null,lastModifiedBy:'',history:[]};
+// Contexte actif : 'production' (Planning) ou 'bureau' (Planning B.E.)
+var currentPlanningContext='production';
+function isBureauContext(){return currentPlanningContext==='bureau';}
+function activePlanningStore(){return isBureauContext()?planningBureau:planning;}
+function setActivePlanningStore(obj){if(isBureauContext()) planningBureau=obj; else planning=obj;}
+function activePointageStore(){return isBureauContext()?pointageBureau:pointage;}
+// Personnes éligibles au contexte courant : Bureau = section B ; Production = autres (M/A/F/T/P/G)
+function isBureauPerson(p){return p && String(p.g||'').toUpperCase()==='B';}
+function isProductionPerson(p){return p && String(p.g||'').toUpperCase()!=='B';}
+function activePeopleForContext(){
+  return PERS.filter(function(p){
+    if(!p||p.active===false) return false;
+    return isBureauContext()?isBureauPerson(p):isProductionPerson(p);
+  });
+}
+// Types proposés à l'encodage selon le contexte
+function eligibleEditorTypes(){
+  if(isBureauContext()){
+    // Bureau : Devis, Plans, Étude, Gestion, Réunion + absences communes (V/C/CE/ML)
+    return TYPES.filter(function(t){return BUREAU_TYPES[t.id]||t.id==='V'||t.id==='C'||t.id==='CE'||t.id==='ML';});
+  }
+  // Production : M/A/F/T/P/G + B (Bureau générique) + absences
+  return TYPES.filter(function(t){return PRODUCTION_TYPES[t.id]||t.id==='B'||t.id==='V'||t.id==='C'||t.id==='CE'||t.id==='ML';});
+}
 var editDay=null, editorTasks=[], editorSuggestions=[];
 var dayClipboard=null;
 var undoStack=[];
@@ -690,7 +714,22 @@ function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.col
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
 function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
-function defaultTypeForPerson(pid){var p=pinfo(pid); var dt=(p.defaultType||'').toUpperCase(); if(dt&&tinfo(dt)&&tinfo(dt).id===dt) return dt; var g=(p.g||'').toUpperCase(); if(g==='B') return 'B'; if(g==='G') return 'G'; for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]) return g; return 'P';}
+function defaultTypeForPerson(pid){
+  var p=pinfo(pid);
+  var dt=(p.defaultType||'').toUpperCase();
+  if(dt&&tinfo(dt)&&tinfo(dt).id===dt){
+    // En contexte Bureau, n'accepter le type forcé que si c'est un type bureau ou une absence ; sinon retomber sur E (Étude)
+    if(isBureauContext() && !BUREAU_TYPES[dt] && !NOCH[dt]) return 'E';
+    if(!isBureauContext() && BUREAU_TYPES[dt]) return 'P'; // type Bureau forcé sur personne Production → retomber sur Pose
+    return dt;
+  }
+  if(isBureauContext()) return 'E'; // contexte Bureau : défaut Étude
+  var g=(p.g||'').toUpperCase();
+  if(g==='B') return 'B';
+  if(g==='G') return 'G';
+  for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]) return g;
+  return 'P';
+}
 
 function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'Atelier',F:'Finition',T:'Transport',P:'Pose',G:'Magasin',B:'Bureau'}; return m[g]||g||'';}
 function activePeople(){return PERS.filter(function(p){return p && p.active!==false;});}
@@ -701,7 +740,7 @@ function personByEmail(email){if(!email) return null; email=String(email).toLowe
 function makePersonId(name){return 'pers_'+String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,18)+'_'+Date.now().toString(36).slice(-4);}
 function manualSave(label){lsSave(); fbSave(); updateStatusBar(); toast((label||'Données')+' sauvegardé');}
 function weekChantierCatalog(){
-  var out=[], seen={}, w=wkKey(), pw=planning[w]||{};
+  var out=[], seen={}, w=wkKey(), P=activePlanningStore(), pw=P[w]||{};
   Object.keys(pw).forEach(function(pid){
     Object.keys(pw[pid]||{}).forEach(function(di){
       getDayTasks(pid,di).forEach(function(t){
@@ -722,9 +761,10 @@ function weekChantierLabel(it){var parts=[]; if(it.num) parts.push(it.num); if(i
 function selectedWeekChantierIndex(it){var list=weekChantierCatalog(); for(var i=0;i<list.length;i++){if((list[i].num||'')===String(it.num||'').trim() && (list[i].nom||'')===String(it.nom||'').trim()) return i;} return '';}
 function recentTaskTemplates(limit){
   limit=limit||8;
-  var weeks=Object.keys(planning||{}).sort().reverse(), out=[], seen={};
+  var P=activePlanningStore();
+  var weeks=Object.keys(P||{}).sort().reverse(), out=[], seen={};
   for(var wi=0; wi<weeks.length && out.length<limit; wi++){
-    var w=weeks[wi], pw=planning[w]||{}, pids=Object.keys(pw);
+    var w=weeks[wi], pw=P[w]||{}, pids=Object.keys(pw);
     for(var pi=0; pi<pids.length && out.length<limit; pi++){
       var pid=pids[pi], days=pw[pid]||{}, dis=Object.keys(days).sort(function(a,b){return parseInt(b,10)-parseInt(a,10);});
       for(var di=0; di<dis.length && out.length<limit; di++){
@@ -743,7 +783,7 @@ function recentTaskTemplates(limit){
   return out;
 }
 function pushUndo(label){
-  undoStack.push({label:label||'dernière action',planning:clone(planning),pointage:clone(pointage),legacyExtraPointage:clone(legacyExtraPointage),cColorOverride:clone(cColorOverride),appMeta:clone(appMeta)});
+  undoStack.push({label:label||'dernière action',planning:clone(planning),pointage:clone(pointage),planningBureau:clone(planningBureau),pointageBureau:clone(pointageBureau),legacyExtraPointage:clone(legacyExtraPointage),cColorOverride:clone(cColorOverride),appMeta:clone(appMeta)});
   if(undoStack.length>30) undoStack.shift();
   updateStatusBar();
 }
@@ -752,6 +792,8 @@ function undoLast(){
   var s=undoStack.pop();
   planning=s.planning||{};
   pointage=s.pointage||{};
+  planningBureau=s.planningBureau||{};
+  pointageBureau=s.pointageBureau||{};
   legacyExtraPointage=s.legacyExtraPointage||{};
   cColorOverride=s.cColorOverride||{};
   appMeta=ensureMeta(s.appMeta||{});
@@ -886,16 +928,18 @@ function adminCount(){return chefUsers.filter(function(c){return c.role==='admin
 function isAdmin(){return role==='admin';}
 function isManager(){return role==='admin'||role==='chef';}
 function cleanupPlanningPath(w,pid,di){
-  if(planning[w]&&planning[w][pid]&&planning[w][pid][di]&&Object.keys(planning[w][pid][di]).length===0) delete planning[w][pid][di];
-  if(planning[w]&&planning[w][pid]&&Object.keys(planning[w][pid]).length===0) delete planning[w][pid];
-  if(planning[w]&&Object.keys(planning[w]).length===0) delete planning[w];
+  var P=activePlanningStore();
+  if(P[w]&&P[w][pid]&&P[w][pid][di]&&Object.keys(P[w][pid][di]).length===0) delete P[w][pid][di];
+  if(P[w]&&P[w][pid]&&Object.keys(P[w][pid]).length===0) delete P[w][pid];
+  if(P[w]&&Object.keys(P[w]).length===0) delete P[w];
 }
 function getRawPlanningDay(pid,di,create){
+  var P=activePlanningStore();
   var w=wkKey(); di=parseInt(di,10);
-  if(!planning[w]){if(!create)return null; planning[w]={};}
-  if(!planning[w][pid]){if(!create)return null; planning[w][pid]={};}
-  if(!planning[w][pid][di]){if(!create)return null; planning[w][pid][di]={};}
-  return planning[w][pid][di];
+  if(!P[w]){if(!create)return null; P[w]={};}
+  if(!P[w][pid]){if(!create)return null; P[w][pid]={};}
+  if(!P[w][pid][di]){if(!create)return null; P[w][pid][di]={};}
+  return P[w][pid][di];
 }
 function legacySlotsToTasks(dayObj){
   var out=[];
@@ -917,13 +961,14 @@ function setDayTasks(pid,di,tasks,opts){
   if(sameJSON(prev,tasks)) return false;
   opts=opts||{};
   if(!opts.skipUndo) pushUndo(opts.undoLabel||('Planning — '+pinfo(pid).nom+' '+DAYS[di]));
+  var P=activePlanningStore();
   var w=wkKey(); di=parseInt(di,10);
-  if(!planning[w]) planning[w]={};
-  if(!planning[w][pid]) planning[w][pid]={};
-  if(tasks.length) planning[w][pid][di]={tasks:tasks}; else delete planning[w][pid][di];
+  if(!P[w]) P[w]={};
+  if(!P[w][pid]) P[w][pid]={};
+  if(tasks.length) P[w][pid][di]={tasks:tasks}; else delete P[w][pid][di];
   cleanupPlanningPath(w,pid,di);
   syncPointageDay(pid,di,true);
-  addHistoryEntry('Planning : '+pinfo(pid).nom+' — '+DAYS[di]+' → '+(tasks.length?tasks.map(taskDesc).join(' / '):'vide'), prev, tasks);
+  addHistoryEntry((isBureauContext()?'Planning B.E. : ':'Planning : ')+pinfo(pid).nom+' — '+DAYS[di]+' → '+(tasks.length?tasks.map(taskDesc).join(' / '):'vide'), prev, tasks);
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
   return true;
 }
@@ -932,10 +977,11 @@ function getLegacySlotFromPointageContext(pid,di,per){
 }
 function getPointageDay(pid,di){
   var w=wkKey(); di=parseInt(di,10);
-  if(!pointage[w]) pointage[w]={};
-  if(!pointage[w][pid]) pointage[w][pid]={};
-  if(!pointage[w][pid][di]) pointage[w][pid][di]={items:[],extras:[]};
-  var day=pointage[w][pid][di];
+  var PT=activePointageStore();
+  if(!PT[w]) PT[w]={};
+  if(!PT[w][pid]) PT[w][pid]={};
+  if(!PT[w][pid][di]) PT[w][pid][di]={items:[],extras:[]};
+  var day=PT[w][pid][di];
   // Détection legacy : présence d'au moins une des clés AM1/AM2/PM1/PM2
   var isLegacy=false;
   for(var k=0;k<LEGACY_SLOTS.length;k++){if(day[LEGACY_SLOTS[k]]){isLegacy=true; break;}}
@@ -952,7 +998,7 @@ function getPointageDay(pid,di){
       lex=(legacyExtraPointage[w][pid][di]||[]).map(function(it){return {num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:roundQuarter(it.h||0)};});
     }
     day={items:items,extras:lex};
-    pointage[w][pid][di]=day;
+    activePointageStore()[w][pid][di]=day;
   }
   // Normalisation : Firebase peut renvoyer un tableau comme objet à clés numériques. On reconvertit en tableau sans perdre le contenu.
   function toArr(o){
@@ -985,9 +1031,10 @@ function syncPointageDay(pid,di,preserve){
 }
 function savePointageDay(pid,di,day,historyText,before,after){
   var w=wkKey();
-  if(!pointage[w]) pointage[w]={};
-  if(!pointage[w][pid]) pointage[w][pid]={};
-  pointage[w][pid][di]=day;
+  var PT=activePointageStore();
+  if(!PT[w]) PT[w]={};
+  if(!PT[w][pid]) PT[w][pid]={};
+  PT[w][pid][di]=day;
   if(historyText) addHistoryEntry(historyText,before,after);
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
 }
@@ -1214,7 +1261,14 @@ function chWk(d){wkMon=new Date(wkMon);wkMon.setDate(wkMon.getDate()+d*7);update
 function buildTabs(){
   var tabsEl=document.getElementById('tabs'), content=document.getElementById('content');
   tabsEl.innerHTML=''; content.innerHTML='';
-  var tabs=isManager()?[{id:'planning',lbl:'📋 Planning'},{id:'pointage',lbl:'⏱ Pointage'},{id:'dashboard',lbl:'📊 Dashboard'},{id:'settings',lbl:'⚙️ Paramètres'},{id:'export',lbl:'📦 Export'}]:[{id:'myplan',lbl:'📅 Mon planning'},{id:'pointage',lbl:'⏱ Mes heures'}];
+  var tabs=isManager()?[
+    {id:'planning',lbl:'📋 Planning'},
+    {id:'planning_be',lbl:'📋 Planning B.E.'},
+    {id:'pointage',lbl:'⏱ Pointage'},
+    {id:'dashboard',lbl:'📊 Dashboard'},
+    {id:'settings',lbl:'⚙️ Paramètres'},
+    {id:'export',lbl:'📦 Export'}
+  ]:[{id:'myplan',lbl:'📅 Mon planning'},{id:'pointage',lbl:'⏱ Mes heures'}];
   tabs.forEach(function(t,i){
     var b=document.createElement('button'); b.textContent=t.lbl; b.dataset.id=t.id; b.onclick=function(){showTab(t.id);}; tabsEl.appendChild(b);
     var v=document.createElement('div'); v.className='view'; v.id='tab-'+t.id; content.appendChild(v);
@@ -1222,8 +1276,22 @@ function buildTabs(){
   });
   showTab(currentTab);
 }
-function showTab(id){currentTab=id; document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.id===id);}); document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='tab-'+id);}); renderCurrentTab();}
-function renderCurrentTab(){if(currentTab==='planning')renderPlanning(); else if(currentTab==='myplan')renderMyPlan(); else if(currentTab==='pointage')renderPointage(); else if(currentTab==='dashboard')renderDashboard(); else if(currentTab==='settings')renderSettings(); else if(currentTab==='export')renderExport();}
+function showTab(id){
+  currentTab=id;
+  // Le contexte planning suit l'onglet : Planning B.E. = bureau, le reste = production
+  currentPlanningContext=(id==='planning_be')?'bureau':'production';
+  document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.id===id);});
+  document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='tab-'+id);});
+  renderCurrentTab();
+}
+function renderCurrentTab(){
+  if(currentTab==='planning'||currentTab==='planning_be') renderPlanning();
+  else if(currentTab==='myplan') renderMyPlan();
+  else if(currentTab==='pointage') renderPointage();
+  else if(currentTab==='dashboard') renderDashboard();
+  else if(currentTab==='settings') renderSettings();
+  else if(currentTab==='export') renderExport();
+}
 
 // ── PLANNING ─────────────────────────────────────────────────
 function dayTotalClass(v,hasTasks){ if(!hasTasks) return ''; if(Math.abs(v-8)<0.001) return 'ok'; return 'warn'; }
@@ -1408,16 +1476,19 @@ function handleDayCellClick(ev,pid,di){
   return false;
 }
 function renderPlanning(){
-  var el=document.getElementById('tab-planning'); if(!el) return;
+  var el=document.getElementById('tab-'+(isBureauContext()?'planning_be':'planning')); if(!el) return;
   var scrollState=getPlanningScrollState();
-  var top='<div class="top-actions"><span style="font-size:11px;color:#15803d;font-weight:700">🏖 Appliquer 8h d’absence à toute l’équipe :</span>';
+  var ctxLbl=isBureauContext()?'Bureau d\'étude':'Production';
+  var top='<div class="top-actions"><span style="font-size:11px;color:#15803d;font-weight:700">🏖 Appliquer 8h d\'absence à toute l\'équipe '+ctxLbl+' :</span>';
   ['V','C'].forEach(function(tp){top+='<button onclick="applyCompanyAbsence(\''+tp+'\')">'+tp+' · '+tinfo(tp).lbl+'</button>';});
   top+='<button onclick="manualSave(\'Planning\')" style="margin-left:auto;border-color:#bfdbfe;color:#1d4ed8">💾 Sauver</button>';
   top+='</div>';
   var html=top+'<div class="week-hint">Clic : encoder la journée · Ctrl+clic sur une case : copier la journée · Ctrl+clic sur un bloc : copier la tâche · Glisser un rectangle : déplacer ailleurs · Alt+clic sur un bloc : supprimer la tâche · Ctrl+Z : annuler · Échap : annuler la copie. Le total par jour et par semaine est calculé automatiquement.</div><div class="table-wrap"><table id="ptbl"><thead><tr><th class="pname">Personnel</th>';
   for(var di=0;di<6;di++) html+='<th>'+DAYS[di]+'<br><span style="font-size:9px;font-weight:400;opacity:.8">'+fmtD(dayDate(di),true)+'</span></th>';
   html+='<th>Total<br>sem.</th></tr></thead><tbody>';
-  activePeople().forEach(function(p){
+  var pplList=activePeopleForContext();
+  if(!pplList.length) html+='<tr><td colspan="8" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne '+(isBureauContext()?'au Bureau d\'étude':'en Production')+'. Pour en ajouter, allez dans ⚙️ Paramètres → Personnel et créez ou affectez une personne à la section '+(isBureauContext()?'<b>Bureau</b>':'Machine/Atelier/Finition/Transport/Pose/Magasin')+'.</td></tr>';
+  pplList.forEach(function(p){
     var col=tcol(p.g); html+='<tr class="person-row" style="border-top-color:'+col+'">';
     html+='<td class="pname"><div class="person-card"><div class="person-avatar" style="background:'+col+'">'+p.nom.charAt(0)+'</div><div class="person-meta"><b>'+p.nom+'</b><span style="color:'+col+'">'+p.poste+'</span></div></div></td>';
     for(var di=0;di<6;di++){
@@ -1439,9 +1510,10 @@ function renderPlanning(){
   restorePlanningScrollState(scrollState);
 }
 function applyCompanyAbsence(type){
-  if(!confirm('Appliquer '+tinfo(type).lbl+' (8h) à toute l’équipe sur toute la semaine courante ?')) return;
-  pushUndo('Absence société — '+tinfo(type).lbl);
-  PERS.forEach(function(p){for(var di=0;di<6;di++) setDayTasks(p.id,di,[{type:type,h:8}],{skipUndo:true,skipToast:true});});
+  var ctxLbl=isBureauContext()?' Bureau':' Production';
+  if(!confirm('Appliquer '+tinfo(type).lbl+' (8h) à toute l\'équipe'+ctxLbl+' sur toute la semaine courante ?')) return;
+  pushUndo('Absence société'+ctxLbl+' — '+tinfo(type).lbl);
+  activePeopleForContext().forEach(function(p){for(var di=0;di<6;di++) setDayTasks(p.id,di,[{type:type,h:8}],{skipUndo:true,skipToast:true});});
   renderPlanning(); if(currentTab==='myplan') renderMyPlan(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast('Absence appliquée à toute la semaine');
 }
 
@@ -1471,7 +1543,7 @@ function renderEditor(){
   html+=editorTasks.map(function(t,i){
     var noC=NOCH[t.type];
     return '<div class="editor-row">'
-      +'<div><select onchange="changeEditorType('+i+',this.value)">'+TYPES.map(function(tp){return '<option value="'+tp.id+'" '+(tp.id===t.type?'selected':'')+'>'+tp.lbl+'</option>';}).join('')+'</select></div>'
+      +'<div><select onchange="changeEditorType('+i+',this.value)">'+eligibleEditorTypes().map(function(tp){return '<option value="'+tp.id+'" '+(tp.id===t.type?'selected':'')+'>'+tp.lbl+'</option>';}).join('')+'</select></div>'
       +'<div class="editor-hours-inline"><input type="number" step="0.25" min="0.25" value="'+t.h+'" onchange="setEditorHours('+i+',this.value)"/></div>'
       +'<div><input placeholder="N° devis" '+(noC?'disabled':'')+' value="'+escAttr(t.num||'')+'" oninput="setEditorField('+i+',\'num\',this.value)"/></div>'
       +'<div><input placeholder="Description devis" '+(noC?'disabled':'')+' value="'+escAttr(t.nom||'')+'" oninput="setEditorField('+i+',\'nom\',this.value)"/></div>'
