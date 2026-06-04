@@ -1004,7 +1004,7 @@ function applyPointageToPlanning(pid,di){
 function validatePointagePerson(pid){
   var n=0; for(var di=0;di<6;di++){ if(applyPointageToPlanning(pid,di)) n++; }
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
-  if(currentTab==='planning') renderPlanning(); if(currentTab==='myplan') renderMyPlan();
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='myplan') renderMyPlan();
   toast(n?('Planning mis à jour ('+n+' jour'+(n>1?'s':'')+')'):'Aucun pointage à reporter');
 }
 var _lastAutoSyncDate='';
@@ -1018,7 +1018,7 @@ function checkAutoSync(){
       if(!isManager()) return;
       var di=(now.getDay()+6)%7; if(di>5) return;
       var n=0; activePeople().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
-      if(n){lsSave(); fbSave(); updateStatusBar(); if(currentTab==='planning') renderPlanning(); toast('Auto-synchro 16h : '+n+' pointage(s) reporté(s)');}
+      if(n){lsSave(); fbSave(); updateStatusBar(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); toast('Auto-synchro 16h : '+n+' pointage(s) reporté(s)');}
     }
   }catch(e){}
 }
@@ -1258,7 +1258,7 @@ function clearDayClipboard(silent){
   if(!dayClipboard) return;
   dayClipboard=null;
   updateStatusBar();
-  if(currentTab==='planning') renderPlanning();
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(!silent) toast('Presse-papiers annulé');
 }
 function copyDayTasks(pid,di){
@@ -1266,7 +1266,7 @@ function copyDayTasks(pid,di){
   if(!tasks.length){toast('Aucune tâche à copier'); return false;}
   dayClipboard={mode:'day',tasks:clone(tasks),source:{pid:pid,di:di,wk:wkKey()},label:pinfo(pid).nom+' — '+DAYS[di]+' '+fmtD(dayDate(di),true)};
   updateStatusBar();
-  if(currentTab==='planning') renderPlanning();
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   toast('📋 Journée copiée — cliquez une autre date pour coller');
   return true;
 }
@@ -1277,7 +1277,7 @@ function pasteDayTasks(pid,di){
     if(!confirm('Remplacer les tâches déjà encodées pour '+pinfo(pid).nom+' — '+DAYS[di]+' '+fmtD(dayDate(di),true)+' ?')) return false;
   }
   var changed=setDayTasks(pid,di,clone(dayClipboard.tasks),{undoLabel:'Collage de journée — '+pinfo(pid).nom+' '+DAYS[di]});
-  if(currentTab==='planning') renderPlanning();
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
   updateStatusBar();
@@ -1290,7 +1290,7 @@ function copyTaskAt(pid,di,taskIndex){
   if(!t){toast('Aucune tâche à copier'); return false;}
   dayClipboard={mode:'task',task:clone(t),source:{pid:pid,di:di,taskId:t.id,wk:wkKey()},label:pinfo(pid).nom+' — '+DAYS[di]+' — '+taskDesc(t)};
   updateStatusBar();
-  if(currentTab==='planning') renderPlanning();
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   toast('📋 Tâche copiée — cliquez une autre date pour coller');
   return true;
 }
@@ -1300,7 +1300,7 @@ function pasteTaskAt(pid,di){
   var copy=clone(dayClipboard.task); copy.id=uid();
   tasks.push(copy);
   var changed=setDayTasks(pid,di,tasks,{undoLabel:'Collage de tâche — '+pinfo(pid).nom+' '+DAYS[di]});
-  if(currentTab==='planning') renderPlanning();
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
   updateStatusBar();
@@ -1314,7 +1314,7 @@ function deleteTaskAt(pid,di,taskIndex){
   tasks.splice(taskIndex,1);
   var changed=setDayTasks(pid,di,tasks,{undoLabel:'Suppression de tâche — '+pinfo(pid).nom+' '+DAYS[di]});
   if(dayClipboard&&dayClipboard.mode==='task'&&sameClipboardSource(pid,di,removed.id)) dayClipboard=null;
-  if(currentTab==='planning') renderPlanning();
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
   updateStatusBar();
@@ -1326,7 +1326,7 @@ function deleteDayTasks(pid,di){
   if(!tasks.length){toast('Aucune tâche à supprimer'); return false;}
   var changed=setDayTasks(pid,di,[],{undoLabel:'Suppression de journée — '+pinfo(pid).nom+' '+DAYS[di]});
   if(sameClipboardSource(pid,di)) dayClipboard=null;
-  if(currentTab==='planning') renderPlanning();
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
   updateStatusBar();
@@ -1705,18 +1705,18 @@ function addPersonToGroup(group){
   var p=normalizePerson({id:makePersonId(nom),nom:nom,g:group,poste:sectionLabel(group),gsm:gsm},PERS.length);
   PERS.push(p); sortPeople();
   addHistoryEntry('Ajout personnel : '+p.nom+' — '+sectionLabel(group),null,p);
-  lsSave(); fbSave(); renderSettings(); buildUserList(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast('Personne ajoutée');
+  lsSave(); fbSave(); renderSettings(); buildUserList(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast('Personne ajoutée');
 }
 function updatePersonField(pid,field,value){
   var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p[field]=String(value||'').trim();
   if(field==='nom' && !p[field]){toast('Le nom ne peut pas être vide'); p[field]=before[field]; renderSettings(); return;}
   addHistoryEntry('Mise à jour personnel : '+before.nom+' — '+field,before,p);
-  lsSave(); fbSave(); if(currentTab==='settings') renderSettings(); buildUserList(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateHeader(); updateStatusBar();
+  lsSave(); fbSave(); if(currentTab==='settings') renderSettings(); buildUserList(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage(); updateHeader(); updateStatusBar();
 }
 function updatePersonSection(pid,g){
   var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.g=String(g||'P').toUpperCase(); p.poste=sectionLabel(p.g); sortPeople();
   addHistoryEntry('Changement de section : '+before.nom+' → '+sectionLabel(p.g),before,p);
-  lsSave(); fbSave(); renderSettings(); buildUserList(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();
+  lsSave(); fbSave(); renderSettings(); buildUserList(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar();
 }
 function updatePersonDefaultType(pid,t){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); t=String(t||'').toUpperCase(); if(t&&!(tinfo(t)&&tinfo(t).id===t)) t=''; p.defaultType=t; addHistoryEntry('Type par défaut : '+p.nom+' → '+(t?tinfo(t).lbl:'auto'),before,p); lsSave(); fbSave(); renderSettings(); updateStatusBar();}
 function updatePersonEmail(pid,em){
@@ -1728,7 +1728,7 @@ function updatePersonEmail(pid,em){
   addHistoryEntry('E-mail : '+p.nom+' → '+(em||'(vide)'),before,p);
   lsSave(); fbSave(); updateStatusBar();
 }
-function togglePersonActive(pid){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=(p.active===false); sortPeople(); addHistoryEntry((p.active?'Activation':'Désactivation')+' personnel : '+p.nom,before,p); lsSave(); fbSave(); renderSettings(); buildUserList(); if(currentTab==='planning') renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast(p.nom+(p.active?' activé':' désactivé'));}
+function togglePersonActive(pid){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=(p.active===false); sortPeople(); addHistoryEntry((p.active?'Activation':'Désactivation')+' personnel : '+p.nom,before,p); lsSave(); fbSave(); renderSettings(); buildUserList(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast(p.nom+(p.active?' activé':' désactivé'));}
 
 // ── PIN MODAL ────────────────────────────────────────────────
 function pmLen(){return (pinEditTarget&&pinEditTarget.kind==='chef')?CHEF_PIN_LENGTH:PIN_LENGTH;}
