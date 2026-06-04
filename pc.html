@@ -132,6 +132,7 @@ input,select{font-size:14px}
 .pt-day-title .r{margin-left:auto;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:999px;font-size:10px}
 .pt-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;margin:10px;border:1px solid var(--bd);border-radius:12px;background:#fff}
 .pt-row.pt-extra{grid-template-columns:minmax(0,1fr) auto auto}
+.pt-row.has-rm{grid-template-columns:minmax(0,1fr) auto auto}
 .pt-topline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:0}
 .hctrl{display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--bd);border-radius:12px;padding:4px}
 .hctrl button{width:30px;height:30px;border-radius:8px;border:1px solid var(--bd);background:#fff;font-size:16px;font-weight:900}
@@ -142,12 +143,19 @@ input,select{font-size:14px}
 .line-actions button{border:1px dashed #94a3b8;background:#f8fafc;color:#64748b;border-radius:10px;padding:8px 12px;font-size:11px;font-weight:700}
 .extra-fields{display:grid;grid-template-columns:190px 96px 1fr;gap:8px}
 .extra-fields input,.extra-fields select{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;font-size:12px;width:100%;background:#fff}
+.pt-fields{display:grid;grid-template-columns:140px 1fr;gap:8px;margin-top:6px}
+.pt-fields input{border:1px solid var(--bd);border-radius:8px;padding:6px 10px;font-size:12px;width:100%;background:#fff;color:#334155}
+.pt-fields .pt-lot{font-weight:600;color:var(--bleu)}
+.pt-rm-x{color:#dc2626;align-self:start;margin-top:4px}
+.hidden-banner{background:#fef9c3;border:1px solid #fde047;color:#854d0e;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:10px}
+.hidden-banner:hover{background:#fef08a}
 .extra-preset{min-width:0}
 @media (max-width:760px){
   .pointage-wrap{max-width:none}
-  .pt-row,.pt-row.pt-extra{grid-template-columns:1fr}
+  .pt-row,.pt-row.pt-extra,.pt-row.has-rm{grid-template-columns:1fr}
   .hctrl{justify-content:flex-end}
   .extra-fields{grid-template-columns:1fr}
+  .pt-fields{grid-template-columns:1fr 1fr}
 }
 
 /* Settings/export */
@@ -571,13 +579,14 @@ var TYPES=[
   {id:'F',lbl:'Finition',col:'#dc2626'},
   {id:'T',lbl:'Transport',col:'#7c3aed'},
   {id:'P',lbl:'Pose',col:'#2563eb'},
+  {id:'G',lbl:'Magasin',col:'#0891b2'},
   {id:'CE',lbl:'Chômage',col:'#ef4444'},
   {id:'V',lbl:'Vacances',col:'#facc15'},
   {id:'C',lbl:'Congé',col:'#ec4899'},
   {id:'ML',lbl:'Malade',col:'#fca5a5'},
   {id:'B',lbl:'Bureau',col:'#64748b'}
 ];
-var GCOL={M:'#f97316',A:'#16a34a',F:'#dc2626',T:'#7c3aed',P:'#2563eb',CE:'#ef4444',V:'#facc15',C:'#ec4899',ML:'#fca5a5',B:'#64748b'};
+var GCOL={M:'#f97316',A:'#16a34a',F:'#dc2626',T:'#7c3aed',P:'#2563eb',G:'#0891b2',CE:'#ef4444',V:'#facc15',C:'#ec4899',ML:'#fca5a5',B:'#64748b'};
 var DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 var LEGACY_SLOTS=['AM1','AM2','PM1','PM2'];
 var NOCH={CE:1,V:1,C:1,ML:1,B:1};
@@ -668,13 +677,13 @@ function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.col
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
 function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
-function defaultTypeForPerson(pid){var p=pinfo(pid); var dt=(p.defaultType||'').toUpperCase(); if(dt&&tinfo(dt)&&tinfo(dt).id===dt) return dt; var g=(p.g||'').toUpperCase(); if(g==='B') return 'B'; for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]) return g; return 'P';}
+function defaultTypeForPerson(pid){var p=pinfo(pid); var dt=(p.defaultType||'').toUpperCase(); if(dt&&tinfo(dt)&&tinfo(dt).id===dt) return dt; var g=(p.g||'').toUpperCase(); if(g==='B') return 'B'; if(g==='G') return 'G'; for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]) return g; return 'P';}
 
-function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'Atelier',F:'Finition',T:'Transport',P:'Pose',B:'Bureau'}; return m[g]||g||'';}
+function sectionLabel(g){g=String(g||'').toUpperCase(); var m={M:'Machine',A:'Atelier',F:'Finition',T:'Transport',P:'Pose',G:'Magasin',B:'Bureau'}; return m[g]||g||'';}
 function activePeople(){return PERS.filter(function(p){return p && p.active!==false;});}
 function archivedPeople(){return PERS.filter(function(p){return p && p.active===false;});}
-function sortPeople(){var pos={}; PERSON_ORDER.forEach(function(id,idx){pos[id]=idx;}); var groupOrder={M:1,A:2,F:3,T:4,P:5,B:6}; PERS.sort(function(a,b){var aa=(a&&a.active!==false)?0:1, bb=(b&&b.active!==false)?0:1; if(aa!==bb) return aa-bb; var pa=(pos[a.id]!==undefined)?pos[a.id]:999, pb=(pos[b.id]!==undefined)?pos[b.id]:999; if(pa!==pb) return pa-pb; var ag=groupOrder[(a.g||'').toUpperCase()]||99, bg=groupOrder[(b.g||'').toUpperCase()]||99; if(ag!==bg) return ag-bg; return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});});}
-function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(g!=='B'&&(!GCOL[g]||NOCH[g])) g='P'; var id=p.id||('pers_'+i+'_'+Date.now().toString(36)); var nom=String(p.nom||('Personne '+(i+1))).trim(); if(id==='marco_t'&&nom==='Marco T.') nom='Marco'; var dt=String(p.defaultType||'').toUpperCase(); if(dt&&!(tinfo(dt)&&tinfo(dt).id===dt)) dt=''; var email=String(p.email||'').trim().toLowerCase(); return {id:id, nom:nom, g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), email:email, defaultType:dt, active:p.active!==false};}
+function sortPeople(){var pos={}; PERSON_ORDER.forEach(function(id,idx){pos[id]=idx;}); var groupOrder={M:1,A:2,F:3,T:4,P:5,G:6,B:7}; PERS.sort(function(a,b){var aa=(a&&a.active!==false)?0:1, bb=(b&&b.active!==false)?0:1; if(aa!==bb) return aa-bb; var pa=(pos[a.id]!==undefined)?pos[a.id]:999, pb=(pos[b.id]!==undefined)?pos[b.id]:999; if(pa!==pb) return pa-pb; var ag=groupOrder[(a.g||'').toUpperCase()]||99, bg=groupOrder[(b.g||'').toUpperCase()]||99; if(ag!==bg) return ag-bg; return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});});}
+function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(!GCOL[g]||NOCH[g]) g='P'; var id=p.id||('pers_'+i+'_'+Date.now().toString(36)); var nom=String(p.nom||('Personne '+(i+1))).trim(); if(id==='marco_t'&&nom==='Marco T.') nom='Marco'; var dt=String(p.defaultType||'').toUpperCase(); if(dt&&!(tinfo(dt)&&tinfo(dt).id===dt)) dt=''; var email=String(p.email||'').trim().toLowerCase(); return {id:id, nom:nom, g:g, poste:String(p.poste||sectionLabel(g)).trim(), gsm:String(p.gsm||'').trim(), email:email, defaultType:dt, active:p.active!==false};}
 function personByEmail(email){if(!email) return null; email=String(email).toLowerCase(); for(var i=0;i<PERS.length;i++){if(PERS[i].email && PERS[i].email===email && PERS[i].active!==false) return PERS[i];} return null;}
 function makePersonId(name){return 'pers_'+String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,18)+'_'+Date.now().toString(36).slice(-4);}
 function manualSave(label){lsSave(); fbSave(); updateStatusBar(); toast((label||'Données')+' sauvegardé');}
@@ -936,7 +945,11 @@ function syncPointageDay(pid,di,preserve){
   (day.items||[]).forEach(function(it){if(it.taskId) map[it.taskId]=it;});
   day.items=tasks.map(function(t){
     var old=map[t.id];
-    return {taskId:t.id,type:t.type,num:t.num,nom:t.nom,mbl:t.mbl,plannedH:t.h,h:old?roundQuarter(old.h):roundQuarter(t.h)};
+    return {taskId:t.id,type:t.type,num:t.num,nom:t.nom,
+            mbl:(old&&old.mbl!=null)?old.mbl:(t.mbl||''),
+            remarque:(old&&old.remarque)?old.remarque:'',
+            hidden:(old&&old.hidden)?true:false,
+            plannedH:t.h,h:old?roundQuarter(old.h):roundQuarter(t.h)};
   });
   if(before!==JSON.stringify(day.items||[])){lsSave(); fbSave();}
 }
@@ -1520,16 +1533,25 @@ function pointageDetailHtml(pid){
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
     var day=getPointageDay(pid,di), rows='', count=0;
+    var hiddenCount=0;
 
     (day.items||[]).forEach(function(it,idx){
+      if(it.hidden){hiddenCount++; return;}
       has=true; count++;
       var c=taskColor(it);
-      var label=taskDisplayLabel({type:it.type,num:it.num,nom:it.nom,mbl:it.mbl,h:it.h},true);
-      rows+='<div class="pt-row" style="border-left:6px solid '+c.brd+'">'
+      var h=parseFloat(it.h)||0;
+      var label='<b>'+escAttr(it.num||'')+(it.nom?' '+escAttr(it.nom):'')+'</b>';
+      var rmBtn=(h<=0)?'<button class="mini-btn pt-rm-x" title="Masquer (h=0)" onclick="hidePlannedItem(\''+pid+'\','+di+','+idx+')">✕</button>':'';
+      rows+='<div class="pt-row'+(h<=0?' has-rm':'')+'" style="border-left:6px solid '+c.brd+'">'
         +'<div class="pt-info">'
-        +'<div class="pt-topline"><b>'+label+'</b></div>'
+        +'<div class="pt-topline">'+label+'</div>'
+        +'<div class="pt-fields">'
+        +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',false,\'mbl\',this.value)"/>'
+        +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',false,\'remarque\',this.value)"/>'
+        +'</div>'
         +'</div>'
         +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',false,-0.25)">−</button><input class="hval hval-input" type="number" step="0.25" min="0" value="'+it.h+'" onchange="setPointageHours(\''+pid+'\','+di+','+idx+',false,this.value)" onfocus="focusedExtraField=\'pth-'+pid+'-'+di+'-'+idx+'\';this.id=\'pth-'+pid+'-'+di+'-'+idx+'\'" onblur="focusedExtraField=null"/><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',false,0.25)">+</button></div>'
+        +rmBtn
         +'</div>';
     });
 
@@ -1539,17 +1561,23 @@ function pointageDetailHtml(pid){
       rows+='<div class="pt-row pt-extra" style="border-left:6px dashed #94a3b8">'
         +'<div class="pt-info"><div class="extra-fields">'
         +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
-        +'<input id="extra-num-'+pid+'-'+di+'-'+idx+'" placeholder="N°" value="'+(it.num||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'num\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
-        +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Client / libellé" value="'+(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
-        +'</div><span class="pt-planned">Chantier imprévu : choisissez un chantier existant ou encodez un nouveau numéro et descriptif.</span></div>'
+        +'<input id="extra-num-'+pid+'-'+di+'-'+idx+'" placeholder="N°" value="'+escAttr(it.num||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'num\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
+        +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Client / libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
+        +'</div>'
+        +'<div class="pt-fields">'
+        +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
+        +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
+        +'</div>'
+        +'<span class="pt-planned">Chantier imprévu : choisissez un chantier existant ou encodez un nouveau numéro et descriptif.</span></div>'
         +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><input class="hval hval-input" type="number" step="0.25" min="0" value="'+it.h+'" onchange="setPointageHours(\''+pid+'\','+di+','+idx+',true,this.value)" onfocus="focusedExtraField=\'pthx-'+pid+'-'+di+'-'+idx+'\';this.id=\'pthx-'+pid+'-'+di+'-'+idx+'\'" onblur="focusedExtraField=null"/><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
-        +'<button class="mini-btn" style="color:#dc2626" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
+        +'<button class="mini-btn pt-rm-x" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
         +'</div>';
     });
 
     if(count||isManager()||pid===userId){
       rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button></div>';
-      html+='<div class="pt-day"><div class="pt-day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+'<span class="r">'+fmtH(pointageDayTotal(pid,di))+'</span></div>'+(count?rows:'<div class="empty-block">Aucune tâche planifiée</div>'+rows)+'</div>';
+      var hiddenBanner=hiddenCount?'<button class="hidden-banner" onclick="restoreHiddenItems(\''+pid+'\','+di+')" title="Restaurer">+ '+hiddenCount+' chantier'+(hiddenCount>1?'s':'')+' masqué'+(hiddenCount>1?'s':'')+' · cliquer pour restaurer</button>':'';
+      html+='<div class="pt-day"><div class="pt-day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+hiddenBanner+'<span class="r">'+fmtH(pointageDayTotal(pid,di))+'</span></div>'+(count?rows:'<div class="empty-block">Aucune tâche planifiée</div>'+rows)+'</div>';
     }
   }
   if(!has) html+='<div class="empty-block" style="text-align:center">Aucune tâche à pointer cette semaine.</div>';
@@ -1565,8 +1593,28 @@ function setPointageHours(pid,di,idx,isExtra,v){
   var before=clone(day); arr[idx].h=Math.max(0,roundQuarter(parseFloat(String(v).replace(',','.'))||0)); day.pointed=true;
   savePointageDay(pid,di,day,'Pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
 }
-function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({num:'',nom:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function setPointageItemField(pid,di,idx,isExtra,field,value){
+  var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
+  var before=clone(day);
+  if(field==='remarque') value=String(value||'').slice(0,25);
+  else value=String(value||'').trim();
+  arr[idx][field]=value; day.pointed=true;
+  savePointageDay(pid,di,day,(field==='mbl'?'LOT':'Remarque')+' : '+pinfo(pid).nom+' — '+DAYS[di],before,day);
+}
+function hidePlannedItem(pid,di,idx){
+  var day=getPointageDay(pid,di); if(!day.items||!day.items[idx]) return;
+  if(roundQuarter(day.items[idx].h)>0){toast('Mettez d\'abord les heures à 0'); return;}
+  var before=clone(day); day.items[idx].hidden=true; day.pointed=true;
+  savePointageDay(pid,di,day,'Chantier masqué : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
+}
+function restoreHiddenItems(pid,di){
+  var day=getPointageDay(pid,di), before=clone(day), n=0;
+  (day.items||[]).forEach(function(it){if(it.hidden){it.hidden=false; n++;}});
+  if(!n) return;
+  savePointageDay(pid,di,day,'Restauration chantiers : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
+}
 function setExtraField(pid,di,idx,f,v){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; day.extras[idx][f]=v; day.pointed=true; savePointageDay(pid,di,day,null);}
 function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; day.pointed=true; savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
 
@@ -1637,7 +1685,7 @@ function dashBar(val,max,color){
   return '<div style="background:#eef2f7;border-radius:6px;height:10px;overflow:hidden;min-width:60px"><div style="height:100%;width:'+pct+'%;background:'+(color||'#2563eb')+'"></div></div>';
 }
 function chantierDetailHtml(C,safeId){
-  var posteOrder=['M','A','F','T','P','B'];
+  var posteOrder=['M','A','F','T','P','G','B'];
   var maxP=0; posteOrder.forEach(function(t){var v=C.byPoste[t]||0; if(v>maxP)maxP=v;});
   var html='<div class="cdet-postes">';
   var anyPoste=false;
@@ -1768,12 +1816,12 @@ function renderSettings(){
   html+=`</div>`;
 
   html+=`<div class="setting-box"><h3>Personnel</h3><p>Renseignez l'<b>e-mail Firebase</b> de chaque ouvrier (créez d'abord son compte dans la console Firebase). Sans e-mail défini, l'ouvrier ne pourra pas se connecter. L'interrupteur Actif/Inactif masque une personne du planning et du pointage sans perdre ses données.</p>`;
-  html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button><button onclick="addPersonToGroup('B')">+ Bureau</button></div>`;
+  html+=`<div class="setting-addbar"><button onclick="addPersonToGroup('M')">+ Machine</button><button onclick="addPersonToGroup('A')">+ Atelier</button><button onclick="addPersonToGroup('F')">+ Finition</button><button onclick="addPersonToGroup('T')">+ Transport</button><button onclick="addPersonToGroup('P')">+ Pose</button><button onclick="addPersonToGroup('G')">+ Magasin</button><button onclick="addPersonToGroup('B')">+ Bureau</button></div>`;
   // En-tête des colonnes
   html+='<div class="setting-row pers-head"><div style="width:32px"></div><div class="person-editor person-editor-head"><div>Nom</div><div>Section</div><div>Type par défaut</div><div>E-mail Firebase</div><div>N° GSM</div><div>Statut</div></div></div>';
   PERS.forEach(function(p){
     var on=p.active!==false;
-    var col=tcol(p.g); var opts=['M','A','F','T','P','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
+    var col=tcol(p.g); var opts=['M','A','F','T','P','G','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
     var dtOpts='<option value="">—</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
     var toggle='<button class="toggle-active '+(on?'on':'off')+'" onclick="togglePersonActive(\''+p.id+'\')" title="'+(on?'Actif — cliquer pour désactiver':'Inactif — cliquer pour activer')+'"><span class="knob"></span><span class="lbl">'+(on?'Actif':'Inactif')+'</span></button>';
     html+=`<div class="setting-row${on?'':' row-inactive'}"><div class="user-avatar-sm" style="background:${col}">${escAttr(p.nom||'?').charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut (— = automatique selon la section)" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.email||'')}" placeholder="e-mail Firebase" type="email" onchange="updatePersonEmail('${p.id}',this.value)" /><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" />${toggle}</div></div>`;
