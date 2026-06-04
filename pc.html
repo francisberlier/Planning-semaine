@@ -1066,18 +1066,22 @@ function validatePointagePerson(pid){
   for(var di=0;di<6;di++){ if(applyPointageToPlanning(pid,di)) n++; }
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
-  toast(n?('Planning mis à jour — '+pinfo(pid).nom+' ('+n+' jour'+(n>1?'s':'')+')'):'Aucun pointage à reporter');
+  if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
+  var ctxLbl=isBureauContext()?' Bureau':'';
+  toast(n?('Planning'+ctxLbl+' mis à jour — '+pinfo(pid).nom+' ('+n+' jour'+(n>1?'s':'')+')'):'Aucun pointage à reporter');
 }
 function validatePointageAll(){
-  if(!confirm('Reporter le pointage validé de TOUT le personnel dans le planning de la semaine ?\n\nLes jours pointés remplaceront le planning. Les jours non pointés restent intacts.')) return;
+  var ctxLbl=isBureauContext()?'Bureau d\'étude':'Production';
+  if(!confirm('Reporter le pointage validé de toute l\'équipe '+ctxLbl+' dans le planning de la semaine ?\n\nLes jours pointés remplaceront le planning. Les jours non pointés restent intacts.')) return;
   var total=0, people=0;
-  activePeople().forEach(function(p){
+  activePeopleForContext().forEach(function(p){
     var n=0; for(var di=0;di<6;di++){ if(applyPointageToPlanning(p.id,di)) n++; }
     if(n){people++; total+=n;}
   });
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
-  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage();
-  toast(total?('Planning mis à jour : '+people+' personne'+(people>1?'s':'')+', '+total+' jour'+(total>1?'s':'')):'Aucun pointage à reporter');
+  if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
+  if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
+  toast(total?('Planning '+ctxLbl+' mis à jour : '+people+' personne'+(people>1?'s':'')+', '+total+' jour'+(total>1?'s':'')):'Aucun pointage à reporter');
 }
 // Auto-sync at 16h (only fires if a device has the app open)
 var _lastAutoSyncDate='';
@@ -1090,8 +1094,14 @@ function checkAutoSync(){
       _lastAutoSyncDate=stamp;
       if(!isManager()) return; // only a manager session performs the write
       var di=(now.getDay()+6)%7; if(di>5) return; // Mon..Sat only
+      // Auto-synchroniser les DEUX contextes : Production + Bureau
+      var savedCtx=currentPlanningContext;
       var n=0;
-      activePeople().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
+      currentPlanningContext='production';
+      activePeopleForContext().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
+      currentPlanningContext='bureau';
+      activePeopleForContext().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
+      currentPlanningContext=savedCtx;
       if(n){lsSave(); fbSave(); updateStatusBar(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); toast('Auto-synchro 16h : '+n+' pointage(s) reporté(s)');}
     }
   }catch(e){}
@@ -1267,6 +1277,7 @@ function buildTabs(){
     {id:'planning',lbl:'📋 Planning'},
     {id:'planning_be',lbl:'📋 Planning B.E.'},
     {id:'pointage',lbl:'⏱ Pointage'},
+    {id:'pointage_be',lbl:'⏱ Pointage B.E.'},
     {id:'dashboard',lbl:'📊 Dashboard'},
     {id:'settings',lbl:'⚙️ Paramètres'},
     {id:'export',lbl:'📦 Export'}
@@ -1280,8 +1291,8 @@ function buildTabs(){
 }
 function showTab(id){
   currentTab=id;
-  // Le contexte planning suit l'onglet : Planning B.E. = bureau, le reste = production
-  currentPlanningContext=(id==='planning_be')?'bureau':'production';
+  // Le contexte suit l'onglet : Planning B.E. ou Pointage B.E. → bureau ; le reste → production
+  currentPlanningContext=(id==='planning_be'||id==='pointage_be')?'bureau':'production';
   document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.id===id);});
   document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='tab-'+id);});
   renderCurrentTab();
@@ -1289,7 +1300,7 @@ function showTab(id){
 function renderCurrentTab(){
   if(currentTab==='planning'||currentTab==='planning_be') renderPlanning();
   else if(currentTab==='myplan') renderMyPlan();
-  else if(currentTab==='pointage') renderPointage();
+  else if(currentTab==='pointage'||currentTab==='pointage_be') renderPointage();
   else if(currentTab==='dashboard') renderDashboard();
   else if(currentTab==='settings') renderSettings();
   else if(currentTab==='export') renderExport();
@@ -1622,30 +1633,50 @@ function renderMyPlan(){
 // ── POINTAGE ─────────────────────────────────────────────────
 var focusedExtraField=null;
 function renderPointage(){
-  var el=document.getElementById('tab-pointage'); if(!el) return;
+  var tabId=(currentTab==='pointage_be')?'pointage_be':'pointage';
+  var el=document.getElementById('tab-'+tabId); if(!el) return;
   // Skip render if user is currently typing in an extra field
   if(focusedExtraField && document.activeElement && document.activeElement.id===focusedExtraField){
     return;
   }
+  var isBE=isBureauContext();
+  var ctxLbl=isBE?'Bureau d\'étude':'Production';
   var html='';
   if(isManager()){
-    // Cet onglet est le Pointage Production : on n'affiche que les personnes hors Bureau (étanchéité avec Pointage B.E. à venir)
-    var act=activePeople().filter(isProductionPerson);
-    var selId=ptSelPers||((act[0]&&act[0].id)||'');
+    // Filtrer par contexte : Production exclut Bureau, Bureau ne montre que Bureau
+    var act=activePeople().filter(isBE?isBureauPerson:isProductionPerson);
+    var selKey=isBE?'ptSelPersBE':'ptSelPers';
+    var selId=window[selKey]||((act[0]&&act[0].id)||'');
     if(selId && !pinfo(selId).active) selId=(act[0]&&act[0].id)||selId;
-    // Si la personne sélectionnée précédemment est Bureau, basculer sur la première Production
-    if(selId && isBureauPerson(pinfo(selId))) selId=(act[0]&&act[0].id)||'';
+    if(selId && (isBE?!isBureauPerson(pinfo(selId)):!isProductionPerson(pinfo(selId)))) selId=(act[0]&&act[0].id)||'';
+    window[selKey]=selId;
     html+='<div class="pillbar">';
-    act.forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="ptSelPers=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
+    act.forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="'+selKey+'=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
     html+='</div>';
-    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">✓ Reporter tout le pointage validé au planning</button> <span style="font-size:12px;color:#64748b">Auto-synchro chaque jour à 16h si un appareil est ouvert.</span></div>';
+    var allBtnLbl=isBE?'✓ Reporter tout le pointage Bureau au planning Bureau':'✓ Reporter tout le pointage validé au planning';
+    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">'+allBtnLbl+'</button> <span style="font-size:12px;color:#64748b">Auto-synchro chaque jour à 16h si un appareil est ouvert.</span></div>';
     if(selId) html+=pointageDetailHtml(selId);
-    else html+='<div style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne en Production. Pour le pointage du Bureau d\'étude, un onglet dédié sera ajouté à l\'étape 3.</div>';
-  } else html=pointageDetailHtml(userId);
+    else html+='<div style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne en '+ctxLbl+'. Ajoutez-en une dans ⚙️ Paramètres → Personnel.</div>';
+  } else {
+    // Ouvrier : son onglet Pointage le route automatiquement selon sa section (étanchéité)
+    var me=pinfo(userId);
+    var meIsBureau=isBureauPerson(me);
+    if(meIsBureau!==isBE){
+      // Mauvais contexte pour cet ouvrier — rediriger vers le bon onglet
+      var targetTab=meIsBureau?'pointage_be':'pointage';
+      el.innerHTML='<div style="padding:30px;text-align:center;color:#64748b">Votre pointage est dans l\'onglet correspondant.</div>';
+      setTimeout(function(){showTab(targetTab);},10);
+      return;
+    }
+    html=pointageDetailHtml(userId);
+  }
   el.innerHTML=html;
 }
 function pointageDetailHtml(pid){
-  var p=pinfo(pid), col=tcol(p.g), html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">Pointage semaine '+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+(isManager()?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">✓ Reporter au planning</button>':'')+'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
+  var p=pinfo(pid), col=tcol(p.g);
+  var reportLbl=isBureauContext()?'✓ Reporter au planning Bureau':'✓ Reporter au planning';
+  var ctxTitle=isBureauContext()?'Pointage B.E. semaine ':'Pointage semaine ';
+  var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+(isManager()?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>':'')+'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
