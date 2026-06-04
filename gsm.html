@@ -483,6 +483,8 @@ function fbSave(){
     db.ref('data').set({
       planning:planning,
       pointage:pointage,
+      planningBureau:planningBureau,
+      pointageBureau:pointageBureau,
       cColorOverride:cColorOverride,
       people:PERS,
       personPins:personPins,
@@ -499,6 +501,8 @@ function fbListen(){
     var val=snap.val(); if(!val) return;
     if(val.planning) planning=val.planning;
     if(val.pointage) pointage=val.pointage;
+    if(val.planningBureau) planningBureau=val.planningBureau; else planningBureau={};
+    if(val.pointageBureau) pointageBureau=val.pointageBureau; else pointageBureau={};
     if(val.extraPointage) legacyExtraPointage=val.extraPointage;
     if(val.cColorOverride) cColorOverride=val.cColorOverride;
     if(val.people) PERS=val.people;
@@ -547,13 +551,22 @@ var TYPES=[
   {id:'T',lbl:'Transport',col:'#7c3aed'},
   {id:'P',lbl:'Pose',col:'#2563eb'},
   {id:'G',lbl:'Magasin',col:'#0891b2'},
+  {id:'D',lbl:'Devis',col:'#4f46e5'},
+  {id:'PL',lbl:'Plans',col:'#7c3aed'},
+  {id:'E',lbl:'Étude',col:'#059669'},
+  {id:'GS',lbl:'Gestion',col:'#d97706'},
+  {id:'R',lbl:'Réunion',col:'#475569'},
   {id:'CE',lbl:'Chômage',col:'#ef4444'},
   {id:'V',lbl:'Vacances',col:'#facc15'},
   {id:'C',lbl:'Congé',col:'#ec4899'},
   {id:'ML',lbl:'Malade',col:'#fca5a5'},
   {id:'B',lbl:'Bureau',col:'#64748b'}
 ];
-var GCOL={M:'#f97316',A:'#16a34a',F:'#dc2626',T:'#7c3aed',P:'#2563eb',G:'#0891b2',CE:'#ef4444',V:'#facc15',C:'#ec4899',ML:'#fca5a5',B:'#64748b'};
+var GCOL={M:'#f97316',A:'#16a34a',F:'#dc2626',T:'#7c3aed',P:'#2563eb',G:'#0891b2',D:'#4f46e5',PL:'#7c3aed',E:'#059669',GS:'#d97706',R:'#475569',CE:'#ef4444',V:'#facc15',C:'#ec4899',ML:'#fca5a5',B:'#64748b'};
+// Types réservés au planning Bureau d'étude
+var BUREAU_TYPES={D:1,PL:1,E:1,GS:1,R:1};
+// Types réservés au planning Production
+var PRODUCTION_TYPES={M:1,A:1,F:1,T:1,P:1,G:1};
 var DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 var LEGACY_SLOTS=['AM1','AM2','PM1','PM2'];
 var NOCH={CE:1,V:1,C:1,ML:1,B:1};
@@ -594,7 +607,7 @@ var PALETTE=[
 // ── STATE ────────────────────────────────────────────────────
 var role=null, userId=null, loginPin='', loginSelectedId=null;
 var wkMon=null, currentTab='';
-var planning={}, pointage={}, legacyExtraPointage={}, cColorOverride={}, personPins={}, chefUsers=[], appMeta={lastModifiedAt:null,lastModifiedBy:'',history:[]};
+var planning={}, pointage={}, planningBureau={}, pointageBureau={}, legacyExtraPointage={}, cColorOverride={}, personPins={}, chefUsers=[], appMeta={lastModifiedAt:null,lastModifiedBy:'',history:[]};
 var editDay=null, editorTasks=[], editorSuggestions=[];
 var dayClipboard=null;
 var undoStack=[];
@@ -765,6 +778,8 @@ function lsSave(){
   try{
     localStorage.setItem('vb_plan_v7',JSON.stringify(planning));
     localStorage.setItem('vb_pointage_v7',JSON.stringify(pointage));
+    localStorage.setItem('vb_planbureau_v1',JSON.stringify(planningBureau));
+    localStorage.setItem('vb_ptbureau_v1',JSON.stringify(pointageBureau));
     localStorage.setItem('vb_extrapt_v7',JSON.stringify(legacyExtraPointage));
     localStorage.setItem('vb_colors_v7',JSON.stringify(cColorOverride));
     localStorage.setItem('vb_people_v18',JSON.stringify(PERS));
@@ -777,6 +792,8 @@ function lsLoad(){
   try{
     var p=localStorage.getItem('vb_plan_v7')||localStorage.getItem('vb_plan'); if(p) planning=JSON.parse(p);
     var q=localStorage.getItem('vb_pointage_v7')||localStorage.getItem('vb_pt'); if(q) pointage=JSON.parse(q);
+    var pb=localStorage.getItem('vb_planbureau_v1'); if(pb) planningBureau=JSON.parse(pb);
+    var qb=localStorage.getItem('vb_ptbureau_v1'); if(qb) pointageBureau=JSON.parse(qb);
     var ex=localStorage.getItem('vb_extrapt_v7')||localStorage.getItem('vb_extrapt'); if(ex) legacyExtraPointage=JSON.parse(ex);
     var c=localStorage.getItem('vb_colors_v7')||localStorage.getItem('vb_colors'); if(c) cColorOverride=JSON.parse(c);
     var ppl=localStorage.getItem('vb_people_v18'); if(ppl) PERS=JSON.parse(ppl);
