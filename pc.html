@@ -919,7 +919,10 @@ function getPointageDay(pid,di){
   if(!pointage[w][pid]) pointage[w][pid]={};
   if(!pointage[w][pid][di]) pointage[w][pid][di]={items:[],extras:[]};
   var day=pointage[w][pid][di];
-  if(!Array.isArray(day.items)){
+  // Détection legacy : présence d'au moins une des clés AM1/AM2/PM1/PM2
+  var isLegacy=false;
+  for(var k=0;k<LEGACY_SLOTS.length;k++){if(day[LEGACY_SLOTS[k]]){isLegacy=true; break;}}
+  if(isLegacy){
     var legacy=day, items=[];
     LEGACY_SLOTS.forEach(function(per){
       var pt=legacy[per]; if(!pt) return;
@@ -934,7 +937,17 @@ function getPointageDay(pid,di){
     day={items:items,extras:lex};
     pointage[w][pid][di]=day;
   }
-  if(!Array.isArray(day.extras)) day.extras=[];
+  // Normalisation : Firebase peut renvoyer un tableau comme objet à clés numériques. On reconvertit en tableau sans perdre le contenu.
+  function toArr(o){
+    if(Array.isArray(o)) return o;
+    if(o && typeof o==='object'){
+      var ks=Object.keys(o).filter(function(k){return /^\d+$/.test(k);}).sort(function(a,b){return parseInt(a,10)-parseInt(b,10);});
+      return ks.map(function(k){return o[k];});
+    }
+    return [];
+  }
+  day.items=toArr(day.items);
+  day.extras=toArr(day.extras);
   return day;
 }
 function syncPointageDay(pid,di,preserve){
