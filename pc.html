@@ -714,6 +714,34 @@ function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.col
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
 function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
+// Cherche la couleur d'un chantier connu dans tout l'historique du planning (production + bureau).
+// Retourne {bg, brd, fg} ou null si le chantier est inconnu.
+function chantierKnownColor(num){
+  num=String(num||'').trim(); if(!num) return null;
+  if(cColorOverride[num]!==undefined) return PALETTE[cColorOverride[num]%PALETTE.length];
+  function scan(store){
+    var weeks=Object.keys(store||{});
+    for(var w=0; w<weeks.length; w++){
+      var wkData=store[weeks[w]]||{};
+      var pids=Object.keys(wkData);
+      for(var pi=0; pi<pids.length; pi++){
+        var days=wkData[pids[pi]]||{}; var dis=Object.keys(days);
+        for(var di=0; di<dis.length; di++){
+          var raw=days[dis[di]];
+          var tasks=Array.isArray(raw&&raw.tasks)?raw.tasks:[];
+          for(var ti=0; ti<tasks.length; ti++){
+            var t=tasks[ti];
+            if(t && String(t.num||'').trim()===num){
+              if(t.colorIdx!=null && PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length];
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+  return scan(planning)||scan(planningBureau);
+}
 function defaultTypeForPerson(pid){
   var p=pinfo(pid);
   var dt=(p.defaultType||'').toUpperCase();
@@ -1059,7 +1087,18 @@ function applyPointageToPlanning(pid,di){
   var day=getPointageDay(pid,di);
   if(!day||!day.pointed) return false; // only pointed days replace planning
   var tasks=pointageDayToTasks(pid,di);
-  return setDayTasks(pid,di,tasks,{skipUndo:false,undoLabel:'Synchro pointage → planning'});
+  var changed=setDayTasks(pid,di,tasks,{skipUndo:false,undoLabel:'Synchro pointage → planning'});
+  // Après le report, les extras (Chantier imprévu) sont maintenant dans le planning
+  // sous forme d'items normaux. On vide la liste extras pour éviter les doublons
+  // au prochain rendu (sinon items + extras = doublon affiché).
+  if(changed){
+    var w=wkKey();
+    var PT=activePointageStore();
+    if(PT[w] && PT[w][pid] && PT[w][pid][di] && (PT[w][pid][di].extras||[]).length){
+      PT[w][pid][di].extras=[];
+    }
+  }
+  return changed;
 }
 function validatePointagePerson(pid){
   var n=0;
@@ -1689,8 +1728,9 @@ function pointageDetailHtml(pid){
       var c=taskColor(it);
       var h=parseFloat(it.h)||0;
       var label='<b>'+escAttr(it.num||'')+(it.nom?' '+escAttr(it.nom):'')+'</b>';
-      var rmBtn=(h<=0)?'<button class="mini-btn pt-rm-x" title="Masquer (h=0)" onclick="hidePlannedItem(\''+pid+'\','+di+','+idx+')">✕</button>':'';
-      rows+='<div class="pt-row'+(h<=0?' has-rm':'')+'" style="border-left:6px solid '+c.brd+'">'
+      // Bouton ✕ toujours disponible — supprime directement (réversible via banner)
+      var rmBtn='<button class="mini-btn pt-rm-x" title="Supprimer cette tâche" onclick="hidePlannedItem(\''+pid+'\','+di+','+idx+')">✕</button>';
+      rows+='<div class="pt-row has-rm" style="border-left:6px solid '+c.brd+'">'
         +'<div class="pt-info">'
         +'<div class="pt-topline">'+label+'</div>'
         +'<div class="pt-fields">'
@@ -1706,20 +1746,38 @@ function pointageDetailHtml(pid){
     (day.extras||[]).forEach(function(it,idx){
       has=true; count++;
       var catalog=weekChantierCatalog();
-      rows+='<div class="pt-row pt-extra" style="border-left:6px dashed #94a3b8">'
-        +'<div class="pt-info"><div class="extra-fields">'
-        +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
-        +'<input id="extra-num-'+pid+'-'+di+'-'+idx+'" placeholder="N°" value="'+escAttr(it.num||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'num\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
-        +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Client / libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
-        +'</div>'
-        +'<div class="pt-fields">'
-        +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
-        +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
-        +'</div>'
-        +'<span class="pt-planned">Chantier imprévu : choisissez un chantier existant ou encodez un nouveau numéro et descriptif.</span></div>'
-        +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><input class="hval hval-input" type="number" step="0.25" min="0" value="'+it.h+'" onchange="setPointageHours(\''+pid+'\','+di+','+idx+',true,this.value)" onfocus="focusedExtraField=\'pthx-'+pid+'-'+di+'-'+idx+'\';this.id=\'pthx-'+pid+'-'+di+'-'+idx+'\'" onblur="focusedExtraField=null"/><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
-        +'<button class="mini-btn pt-rm-x" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
-        +'</div>';
+      // Si le N° correspond à un chantier connu, on rend l'extra visuellement comme un item normal :
+      // bordure pleine colorée, topline en gras, et masquage du sélecteur + inputs num/nom (devenus redondants).
+      var knownCol=chantierKnownColor(it.num);
+      if(knownCol){
+        rows+='<div class="pt-row has-rm" style="border-left:6px solid '+knownCol.brd+'">'
+          +'<div class="pt-info">'
+          +'<div class="pt-topline"><b>'+escAttr(it.num)+(it.nom?' '+escAttr(it.nom):'')+'</b></div>'
+          +'<div class="pt-fields">'
+          +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
+          +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
+          +'</div>'
+          +'</div>'
+          +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><input class="hval hval-input" type="number" step="0.25" min="0" value="'+it.h+'" onchange="setPointageHours(\''+pid+'\','+di+','+idx+',true,this.value)" onfocus="focusedExtraField=\'pthx-'+pid+'-'+di+'-'+idx+'\';this.id=\'pthx-'+pid+'-'+di+'-'+idx+'\'" onblur="focusedExtraField=null"/><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
+          +'<button class="mini-btn pt-rm-x" title="Supprimer cette ligne" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
+          +'</div>';
+      } else {
+        // Vrai chantier imprévu (N° inconnu) — interface complète d'encodage
+        rows+='<div class="pt-row pt-extra" style="border-left:6px dashed #94a3b8">'
+          +'<div class="pt-info"><div class="extra-fields">'
+          +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
+          +'<input id="extra-num-'+pid+'-'+di+'-'+idx+'" placeholder="N°" value="'+escAttr(it.num||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'num\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
+          +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Client / libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
+          +'</div>'
+          +'<div class="pt-fields">'
+          +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
+          +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
+          +'</div>'
+          +'<span class="pt-planned">Chantier imprévu : choisissez un chantier existant ou encodez un nouveau numéro et descriptif.</span></div>'
+          +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><input class="hval hval-input" type="number" step="0.25" min="0" value="'+it.h+'" onchange="setPointageHours(\''+pid+'\','+di+','+idx+',true,this.value)" onfocus="focusedExtraField=\'pthx-'+pid+'-'+di+'-'+idx+'\';this.id=\'pthx-'+pid+'-'+di+'-'+idx+'\'" onblur="focusedExtraField=null"/><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
+          +'<button class="mini-btn pt-rm-x" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
+          +'</div>';
+      }
     });
 
     if(count||isManager()||pid===userId){
@@ -1753,9 +1811,13 @@ function setPointageItemField(pid,di,idx,isExtra,field,value){
 }
 function hidePlannedItem(pid,di,idx){
   var day=getPointageDay(pid,di); if(!day.items||!day.items[idx]) return;
-  if(roundQuarter(day.items[idx].h)>0){toast('Mettez d\'abord les heures à 0'); return;}
-  var before=clone(day); day.items[idx].hidden=true; day.pointed=true;
-  savePointageDay(pid,di,day,'Chantier masqué : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
+  var before=clone(day);
+  // Suppression directe : met à 0h et masque (réversible via "+ N chantier masqué")
+  day.items[idx].h=0;
+  day.items[idx].hidden=true;
+  day.pointed=true;
+  savePointageDay(pid,di,day,'Chantier supprimé : '+pinfo(pid).nom+' — '+DAYS[di],before,day);
+  renderPointage();
 }
 function restoreHiddenItems(pid,di){
   var day=getPointageDay(pid,di), before=clone(day), n=0;

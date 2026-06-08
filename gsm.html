@@ -663,6 +663,32 @@ function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.col
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
 function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
+function chantierKnownColor(num){
+  num=String(num||'').trim(); if(!num) return null;
+  if(cColorOverride[num]!==undefined) return PALETTE[cColorOverride[num]%PALETTE.length];
+  function scan(store){
+    var weeks=Object.keys(store||{});
+    for(var w=0; w<weeks.length; w++){
+      var wkData=store[weeks[w]]||{};
+      var pids=Object.keys(wkData);
+      for(var pi=0; pi<pids.length; pi++){
+        var days=wkData[pids[pi]]||{}; var dis=Object.keys(days);
+        for(var di=0; di<dis.length; di++){
+          var raw=days[dis[di]];
+          var tasks=Array.isArray(raw&&raw.tasks)?raw.tasks:[];
+          for(var ti=0; ti<tasks.length; ti++){
+            var t=tasks[ti];
+            if(t && String(t.num||'').trim()===num){
+              if(t.colorIdx!=null && PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length];
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+  return scan(planning)||scan(planningBureau);
+}
 function defaultTypeForPerson(pid){
   var p=pinfo(pid);
   var dt=(p.defaultType||'').toUpperCase();
@@ -1001,7 +1027,16 @@ function applyPointageToPlanning(pid,di){
   var day=getPointageDay(pid,di);
   if(!day||!day.pointed) return false;
   var tasks=pointageDayToTasks(pid,di);
-  return setDayTasks(pid,di,tasks,{skipUndo:false,undoLabel:'Synchro pointage → planning'});
+  var changed=setDayTasks(pid,di,tasks,{skipUndo:false,undoLabel:'Synchro pointage → planning'});
+  // Après le report, les extras sont devenus des items du planning ; on vide pour éviter les doublons.
+  if(changed){
+    var w=wkKey();
+    var PT=activePointageStore();
+    if(PT[w] && PT[w][pid] && PT[w][pid][di] && (PT[w][pid][di].extras||[]).length){
+      PT[w][pid][di].extras=[];
+    }
+  }
+  return changed;
 }
 function validatePointagePerson(pid){
   var n=0; for(var di=0;di<6;di++){ if(applyPointageToPlanning(pid,di)) n++; }
@@ -1525,7 +1560,7 @@ function pointageDetailHtml(pid){
       var c=taskColor(it);
       var h=parseFloat(it.h)||0;
       var label='<b>'+escAttr(it.num||'')+(it.nom?' '+escAttr(it.nom):'')+'</b>';
-      var rmBtn=(h<=0)?'<button class="mini-btn pt-rm-x" title="Masquer (h=0)" onclick="hidePlannedItem(\''+pid+'\','+di+','+idx+')">✕</button>':'';
+      var rmBtn='<button class="mini-btn pt-rm-x" title="Supprimer cette tâche" onclick="hidePlannedItem(\''+pid+'\','+di+','+idx+')">✕</button>';
       rows+='<div class="pt-row'+(h<=0?' has-rm':'')+'" style="border-left:6px solid '+c.brd+'">'
         +'<div class="pt-info"><div class="pt-topline">'+label+'</div>'
         +'<div class="pt-fields">'
@@ -1539,8 +1574,13 @@ function pointageDetailHtml(pid){
     (day.extras||[]).forEach(function(it,idx){
       has=true; count++;
       var catalog=weekChantierCatalog();
-      rows+='<div class="pt-row pt-extra" style="border-left:6px dashed #94a3b8">'
-        +'<div class="pt-info"><div class="extra-fields">'
+      var knownCol=chantierKnownColor(it.num);
+      var borderStyle=knownCol?('6px solid '+knownCol.brd):'6px dashed #94a3b8';
+      var topline=knownCol?'<div class="pt-topline"><b>'+escAttr(it.num)+(it.nom?' '+escAttr(it.nom):'')+'</b></div>':'';
+      rows+='<div class="pt-row pt-extra" style="border-left:'+borderStyle+'">'
+        +'<div class="pt-info">'
+        +topline
+        +'<div class="extra-fields">'
         +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
         +'<button class="num-field-btn" onclick="openExtraNumPad(\''+pid+'\','+di+','+idx+')">'+((it.num||'').trim()?escAttr(it.num):'N° chantier')+'</button>'
         +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
@@ -1577,9 +1617,12 @@ function setPointageItemField(pid,di,idx,isExtra,field,value){
 }
 function hidePlannedItem(pid,di,idx){
   var day=getPointageDay(pid,di); if(!day.items||!day.items[idx]) return;
-  if(roundQuarter(day.items[idx].h)>0){toast('Mettez d\'abord les heures à 0'); return;}
-  var before=clone(day); day.items[idx].hidden=true; day.pointed=true;
-  savePointageDay(pid,di,day,'Chantier masqué : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
+  var before=clone(day);
+  day.items[idx].h=0;
+  day.items[idx].hidden=true;
+  day.pointed=true;
+  savePointageDay(pid,di,day,'Chantier supprimé : '+pinfo(pid).nom+' — '+DAYS[di],before,day);
+  renderPointage();
 }
 function restoreHiddenItems(pid,di){
   var day=getPointageDay(pid,di), before=clone(day), n=0;
