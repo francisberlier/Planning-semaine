@@ -1013,7 +1013,8 @@ function pointageDayToTasks(pid,di){
   var day=getPointageDay(pid,di); var tasks=[];
   (day.items||[]).forEach(function(it){
     var h=roundQuarter(it.h); if(h<=0) return;
-    tasks.push(sanitizeTask({type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+    // Garder le taskId pour que le pointage reste intact (heures, LOT, remarque) après le report.
+    tasks.push(sanitizeTask({id:it.taskId||undefined,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
   });
   var dft=defaultTypeForPerson(pid);
   (day.extras||[]).forEach(function(it){
