@@ -87,6 +87,8 @@ input,select{font-size:14px}
 #ptbl td.weektotal{min-width:86px;width:86px;padding:8px;text-align:center;font-weight:800;font-size:13px;background:#f8fafc;position:sticky;right:0;z-index:4}
 .person-row{border-top:3px solid #cbd5e1}
 .person-card{display:flex;align-items:center;gap:8px}
+.resync-btn{margin-left:auto;flex-shrink:0;width:24px;height:24px;border-radius:6px;border:1px solid #fcd34d;background:#fef3c7;color:#92400e;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.resync-btn:hover{background:#fde68a}
 .person-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0}
 .person-meta b{display:block;font-size:12px;line-height:1.15}
 .person-meta span{font-size:10px;font-weight:700}
@@ -314,6 +316,9 @@ input,select{font-size:14px}
   .task-mini{padding:5px 5px;font-size:10px;min-height:22px}
   .task-mini b{font-size:10px}
 }
+/* === Bandeaux toujours visibles au scroll (PC) === */
+#app{height:100dvh;max-height:100dvh}
+.pillbar{position:sticky;top:0;z-index:40}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -706,7 +711,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260609-1652";
+var APP_VERSION="V1 260609-1713";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1672,7 +1677,7 @@ function renderPlanning(){
   if(!pplList.length) html+='<tr><td colspan="8" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne '+(isBureauContext()?'au Bureau d\'étude':'en Production')+'. Pour en ajouter, allez dans ⚙️ Paramètres → Personnel et créez ou affectez une personne à la section '+(isBureauContext()?'<b>Bureau</b>':'Machine/Atelier/Finition/Transport/Pose/Magasin')+'.</td></tr>';
   pplList.forEach(function(p){
     var col=tcol(p.g); html+='<tr class="person-row" style="border-top-color:'+col+'">';
-    html+='<td class="pname"><div class="person-card"><div class="person-avatar" style="background:'+col+'">'+p.nom.charAt(0)+'</div><div class="person-meta"><b>'+p.nom+'</b><span style="color:'+col+'">'+p.poste+'</span></div></div></td>';
+    html+='<td class="pname"><div class="person-card"><div class="person-avatar" style="background:'+col+'">'+p.nom.charAt(0)+'</div><div class="person-meta"><b>'+p.nom+'</b><span style="color:'+col+'">'+p.poste+'</span></div>'+(isManager()?'<button class="resync-btn" title="Remettre le pointage de '+escAttr(p.nom)+' en miroir du planning (efface heures pointées, remarques, imprévus)" onclick="event.stopPropagation();resyncPointagePerson(\''+p.id+'\')">↻</button>':'')+'</div></td>';
     for(var di=0;di<6;di++){
       var tasks=getDayTasks(p.id,di), total=plannedDayTotal(p.id,di), cellCls='daycell'+(sameClipboardSource(p.id,di)?' clip-src':(dayClipboard?' clip-ready':''));
       html+='<td class="'+cellCls+'" onclick="return handleDayCellClick(event,\''+p.id+'\','+di+')" ondragover="return handleDayDragOver(event,\''+p.id+'\','+di+')" ondragenter="return handleDayDragEnter(event,\''+p.id+'\','+di+')" ondragleave="return handleDayDragLeave(event,\''+p.id+'\','+di+')" ondrop="return handleDayDrop(event,\''+p.id+'\','+di+')" title="Clic : éditer · Ctrl+clic : copier/coller la journée · Ctrl+clic sur un bloc : copier la tâche · Glisser un rectangle : déplacer"><div class="daycell-top"><span>'+(tasks.length?(tasks.length+' tâche'+(tasks.length>1?'s':'')):'—')+'</span><span class="day-total '+dayTotalClass(total,tasks.length)+'">'+(tasks.length?fmtH(total):'0h')+'</span></div>';
@@ -2418,6 +2423,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1652</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1713</span></div>
 </body>
 </html>
