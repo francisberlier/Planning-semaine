@@ -1056,11 +1056,22 @@ function syncPointageDay(pid,di,preserve){
   (day.items||[]).forEach(function(it){if(it.taskId) map[it.taskId]=it;});
   day.items=tasks.map(function(t){
     var old=map[t.id];
+    var newH;
+    if(old){
+      // Si le planning a changé d'heures depuis le dernier sync (old.plannedH != t.h),
+      // le pointage doit suivre la nouvelle valeur du planning.
+      // Sinon (planning inchangé), conserver ce que l'utilisateur a pointé.
+      var oldPlannedH=roundQuarter(old.plannedH||0);
+      var newPlannedH=roundQuarter(t.h);
+      newH=(oldPlannedH!==newPlannedH)?newPlannedH:roundQuarter(old.h);
+    } else {
+      newH=roundQuarter(t.h);
+    }
     return {taskId:t.id,type:t.type,num:t.num,nom:t.nom,
             mbl:(old&&old.mbl!=null)?old.mbl:(t.mbl||''),
             remarque:(old&&old.remarque)?old.remarque:'',
             hidden:(old&&old.hidden)?true:false,
-            plannedH:t.h,h:old?roundQuarter(old.h):roundQuarter(t.h)};
+            plannedH:t.h,h:newH};
   });
   if(before!==JSON.stringify(day.items||[])){lsSave(); fbSave();}
 }
@@ -1148,30 +1159,48 @@ function validatePointageAll(){
   if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
   toast(total?('Planning '+ctxLbl+' mis à jour : '+people+' personne'+(people>1?'s':'')+', '+total+' jour'+(total>1?'s':'')):'Aucun pointage à reporter');
 }
-// Auto-sync at 16h (only fires if a device has the app open)
-var _lastAutoSyncDate='';
-function checkAutoSync(){
-  try{
-    var now=new Date();
-    if(now.getHours()===16 && now.getMinutes()===0){
-      var stamp=now.toISOString().slice(0,10);
-      if(_lastAutoSyncDate===stamp) return;
-      _lastAutoSyncDate=stamp;
-      if(!isManager()) return; // only a manager session performs the write
-      var di=(now.getDay()+6)%7; if(di>5) return; // Mon..Sat only
-      // Auto-synchroniser les DEUX contextes : Production + Bureau
-      var savedCtx=currentPlanningContext;
-      var n=0;
-      currentPlanningContext='production';
-      activePeopleForContext().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
-      currentPlanningContext='bureau';
-      activePeopleForContext().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
-      currentPlanningContext=savedCtx;
-      if(n){lsSave(); fbSave(); updateStatusBar(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); toast('Auto-synchro 16h : '+n+' pointage(s) reporté(s)');}
-    }
-  }catch(e){}
+// ── RESYNC DU POINTAGE DEPUIS LE PLANNING ──
+// Action inverse du "Reporter au planning" : remet le pointage en miroir exact du planning.
+// Efface les heures pointées, le hidden, les extras. Utile pour repartir d'une base propre.
+function resyncPointageDayFromPlanning(pid,di){
+  var w=wkKey();
+  var PT=activePointageStore();
+  if(!PT[w]) PT[w]={};
+  if(!PT[w][pid]) PT[w][pid]={};
+  var tasks=getDayTasks(pid,di).filter(function(t){return !NOCH[t.type];});
+  // Reconstruction complète des items depuis le planning, sans préservation
+  var items=tasks.map(function(t){
+    return {taskId:t.id,type:t.type,num:t.num,nom:t.nom,
+            mbl:t.mbl||'',remarque:'',hidden:false,
+            plannedH:t.h,h:roundQuarter(t.h)};
+  });
+  PT[w][pid][di]={items:items, extras:[], pointed:false};
+  return items.length;
 }
-setInterval(checkAutoSync,30000);
+function resyncPointagePerson(pid){
+  if(!confirm('Resynchroniser le pointage de '+pinfo(pid).nom+' depuis le planning ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages seront effacés et remplacés par les valeurs du planning.')) return;
+  var n=0;
+  for(var di=0; di<6; di++) n+=resyncPointageDayFromPlanning(pid,di);
+  lsSave(); fbSave(); updateStatusBar();
+  if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
+  toast('↻ Pointage de '+pinfo(pid).nom+' resynchronisé ('+n+' tâche'+(n>1?'s':'')+')');
+}
+function resyncPointageAllWeek(){
+  var ctxLbl=isBureauContext()?'Bureau d\'étude':'Production';
+  if(!confirm('Resynchroniser le pointage de TOUTE l\'équipe '+ctxLbl+' depuis le planning de la semaine ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages de toute l\'équipe seront effacés et remplacés par les valeurs du planning.\n\nÀ utiliser uniquement pour repartir d\'une base propre.')) return;
+  var people=0, total=0;
+  activePeopleForContext().forEach(function(p){
+    var n=0; for(var di=0; di<6; di++) n+=resyncPointageDayFromPlanning(p.id,di);
+    if(n){people++; total+=n;}
+  });
+  lsSave(); fbSave(); updateStatusBar();
+  if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
+  toast('↻ Pointage '+ctxLbl+' resynchronisé : '+people+' personne'+(people>1?'s':'')+', '+total+' tâche'+(total>1?'s':''));
+}
+
+// L'auto-synchro à 16h a été supprimée : le report est désormais 100% manuel via les boutons
+// "Reporter ce jour", "Reporter au planning" (par personne) et "Reporter tout le pointage validé".
+// Cela évite les surprises et donne un contrôle total au chef de production.
 
 // ── LOGIN ────────────────────────────────────────────────────
 // ── LOGIN (Firebase Auth unifié) ────────────────────────────
@@ -1719,7 +1748,7 @@ function renderPointage(){
     act.forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="'+selKey+'=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
     html+='</div>';
     var allBtnLbl=isBE?'✓ Reporter tout le pointage Bureau au planning Bureau':'✓ Reporter tout le pointage validé au planning';
-    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">'+allBtnLbl+'</button> <span style="font-size:12px;color:#64748b">Auto-synchro chaque jour à 16h si un appareil est ouvert.</span></div>';
+    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">'+allBtnLbl+'</button> <button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:9px 16px" title="Resync toute l\'équipe depuis le planning" onclick="resyncPointageAllWeek()">↻ Resync semaine depuis planning</button> <span style="font-size:12px;color:#64748b">Ou utilisez les boutons « Reporter ce jour » / « Resync planning » par personne.</span></div>';
     if(selId) html+=pointageDetailHtml(selId);
     else html+='<div style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne en '+ctxLbl+'. Ajoutez-en une dans ⚙️ Paramètres → Personnel.</div>';
   } else {
@@ -1741,7 +1770,7 @@ function pointageDetailHtml(pid){
   var p=pinfo(pid), col=tcol(p.g);
   var reportLbl=isBureauContext()?'✓ Reporter au planning Bureau':'✓ Reporter au planning';
   var ctxTitle=isBureauContext()?'Pointage B.E. semaine ':'Pointage semaine ';
-  var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+(isManager()?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>':'')+'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
+  var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+(isManager()?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>':'')+(isManager()?'<button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700" title="Remettre le pointage en miroir du planning (efface heures/remarques/imprévus)" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync planning</button>':'')+'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);

@@ -993,11 +993,21 @@ function syncPointageDay(pid,di,preserve){
   (day.items||[]).forEach(function(it){if(it.taskId) map[it.taskId]=it;});
   day.items=tasks.map(function(t){
     var old=map[t.id];
+    var newH;
+    if(old){
+      // Si le planning a changé d'heures depuis le dernier sync, le pointage suit le planning.
+      // Sinon, conserver ce que l'utilisateur a pointé.
+      var oldPlannedH=roundQuarter(old.plannedH||0);
+      var newPlannedH=roundQuarter(t.h);
+      newH=(oldPlannedH!==newPlannedH)?newPlannedH:roundQuarter(old.h);
+    } else {
+      newH=roundQuarter(t.h);
+    }
     return {taskId:t.id,type:t.type,num:t.num,nom:t.nom,
             mbl:(old&&old.mbl!=null)?old.mbl:(t.mbl||''),
             remarque:(old&&old.remarque)?old.remarque:'',
             hidden:(old&&old.hidden)?true:false,
-            plannedH:t.h,h:old?roundQuarter(old.h):roundQuarter(t.h)};
+            plannedH:t.h,h:newH};
   });
   if(before!==JSON.stringify(day.items||[])){lsSave(); fbSave();}
 }
@@ -1065,28 +1075,35 @@ function forceRenderPointage(){
     if(el){focusedExtraField=savedFocus; el.focus();}
   }
 }
+// ── RESYNC DU POINTAGE DEPUIS LE PLANNING ──
+function resyncPointageDayFromPlanning(pid,di){
+  var w=wkKey();
+  var PT=activePointageStore();
+  if(!PT[w]) PT[w]={};
+  if(!PT[w][pid]) PT[w][pid]={};
+  var tasks=getDayTasks(pid,di).filter(function(t){return !NOCH[t.type];});
+  var items=tasks.map(function(t){
+    return {taskId:t.id,type:t.type,num:t.num,nom:t.nom,
+            mbl:t.mbl||'',remarque:'',hidden:false,
+            plannedH:t.h,h:roundQuarter(t.h)};
+  });
+  PT[w][pid][di]={items:items, extras:[], pointed:false};
+  return items.length;
+}
+function resyncPointagePerson(pid){
+  if(!confirm('Resynchroniser le pointage de '+pinfo(pid).nom+' depuis le planning ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages seront effacés et remplacés par les valeurs du planning.')) return;
+  var n=0; for(var di=0; di<6; di++) n+=resyncPointageDayFromPlanning(pid,di);
+  lsSave(); fbSave(); updateStatusBar();
+  if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
+  toast('↻ Pointage de '+pinfo(pid).nom+' resynchronisé');
+}
 function validatePointagePerson(pid){
   var n=0; for(var di=0;di<6;di++){ if(applyPointageToPlanning(pid,di,{force:true})) n++; }
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='myplan') renderMyPlan();
   toast(n?('Planning mis à jour ('+n+' jour'+(n>1?'s':'')+')'):'Aucun pointage à reporter');
 }
-var _lastAutoSyncDate='';
-function checkAutoSync(){
-  try{
-    var now=new Date();
-    if(now.getHours()===16 && now.getMinutes()===0){
-      var stamp=now.toISOString().slice(0,10);
-      if(_lastAutoSyncDate===stamp) return;
-      _lastAutoSyncDate=stamp;
-      if(!isManager()) return;
-      var di=(now.getDay()+6)%7; if(di>5) return;
-      var n=0; activePeople().forEach(function(p){ if(applyPointageToPlanning(p.id,di)) n++; });
-      if(n){lsSave(); fbSave(); updateStatusBar(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); toast('Auto-synchro 16h : '+n+' pointage(s) reporté(s)');}
-    }
-  }catch(e){}
-}
-setInterval(checkAutoSync,30000);
+// L'auto-synchro à 16h a été supprimée : le report est désormais 100% manuel via les boutons.
 
 // ── LOGIN ────────────────────────────────────────────────────
 // ── LOGIN (Firebase Auth unifié) ────────────────────────────
@@ -1576,7 +1593,7 @@ function pointageDetailHtml(pid){
   var reportLbl=isBureauContext()?'✓ Valider mon pointage → planning Bureau':'✓ Valider mon pointage → planning';
   var goPlanningTab=isBureauContext()?'planning_be':'planning';
   var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div>'+(isManager()?'<div class="person-actions"><button class="mini-btn" onclick="showTab(\'personnel\')">Changer</button><button class="mini-btn" onclick="showTab(\''+goPlanningTab+'\')">Voir planning</button></div>':'')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div>';
-  html+='<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button></div>';
+  html+='<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>'+(isManager()?'<button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:10px 16px;width:100%;margin-top:6px" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync depuis planning</button>':'')+'</div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
