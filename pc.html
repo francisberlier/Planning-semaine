@@ -704,7 +704,8 @@ function roundQuarter(v){v=parseFloat(v)||0;return Math.round(v*4)/4;}
 function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
-var APP_VERSION="V1 260609-1606";
+var isRendering=false;
+var APP_VERSION="V1 260609-1644";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1139,7 +1140,7 @@ function syncPointageDay(pid,di,preserve){
             hidden:(old&&old.hidden)?true:false,
             plannedH:t.h,h:newH};
   });
-  if(before!==JSON.stringify(day.items||[])){lsSave(); fbSave();}
+  if(!isRendering && before!==JSON.stringify(day.items||[])){lsSave(); fbSave();}
 }
 function savePointageDay(pid,di,day,historyText,before,after){
   var w=wkKey();
@@ -1799,6 +1800,8 @@ function renderPointage(){
   if(focusedExtraField && document.activeElement && document.activeElement.id===focusedExtraField){
     return;
   }
+  isRendering=true;
+  try{
   var isBE=isBureauContext();
   var ctxLbl=isBE?'Bureau d\'étude':'Production';
   var html='';
@@ -1831,6 +1834,7 @@ function renderPointage(){
     html=pointageDetailHtml(userId);
   }
   el.innerHTML=html;
+  }finally{isRendering=false;}
 }
 function pointageDetailHtml(pid){
   var p=pinfo(pid), col=tcol(p.g);
@@ -2412,6 +2416,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1606</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1644</span></div>
 </body>
 </html>
