@@ -309,6 +309,7 @@ input,select{font-size:14px}
   <div class="login-logo">🪵</div>
   <div class="login-title">Verbruggen</div>
   <div class="login-sub">Planning &amp; Pointage</div>
+  <div class="login-ver" style="color:rgba(255,255,255,.45);font-size:11px;margin-top:-20px;margin-bottom:20px;letter-spacing:.3px">V1 260609-1557</div>
   <div class="login-card">
     <h3>Connexion</h3>
     <div id="bureau-form" style="margin-bottom:8px">
@@ -656,6 +657,7 @@ function roundQuarter(v){v=parseFloat(v)||0;return Math.round(v*4)/4;}
 function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
+var APP_VERSION="V1 260609-1557";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1949,5 +1951,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1557</span></div>
 </body>
 </html>
