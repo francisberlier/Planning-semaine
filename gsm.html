@@ -491,7 +491,8 @@ function fbSave(){
       people:PERS,
       personPins:personPins,
       chefUsers:chefUsers,
-      meta:appMeta
+      meta:appMeta,
+      nextLineId:nextLineId
     });
   }catch(e){}
 }
@@ -512,6 +513,7 @@ function fbListen(){
     if(val.chefUsers) chefUsers=val.chefUsers;
     else if(val.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(val.chefPin)||DEFAULT_CHEF_PIN}];
     if(val.meta) appMeta=ensureMeta(val.meta);
+    if(val.nextLineId!=null){var rid=parseInt(val.nextLineId,10); if(!isNaN(rid)&&rid>nextLineId) nextLineId=rid;}
     migrateState();
     lsSave();
     updateStatusBar();
@@ -652,6 +654,9 @@ function tinfo(id){for(var i=0;i<TYPES.length;i++)if(TYPES[i].id===id)return TYP
 function tcol(id){return GCOL[id]||'#64748b';}
 function roundQuarter(v){v=parseFloat(v)||0;return Math.round(v*4)/4;}
 function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+var nextLineId=1;
+function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
+function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function sameJSON(a,b){return JSON.stringify(a==null?null:a)===JSON.stringify(b==null?null:b);}
@@ -662,7 +667,7 @@ function fmtHShort(v){return fmtH(v).replace(' ','');}
 function ensureMeta(meta){meta=meta||{};return {lastModifiedAt:meta.lastModifiedAt||null,lastModifiedBy:meta.lastModifiedBy||'',history:Array.isArray(meta.history)?meta.history:[]};}
 function currentDisplayName(){if(bureauUser){var em=bureauUser.email||''; var nm=em.split('@')[0]||em; return nm.charAt(0).toUpperCase()+nm.slice(1);} if(isManager()&&userId){var c=chefInfo(userId);return c?c.nom:'Chef';} if(role==='personnel'&&userId){return pinfo(userId).nom;} return 'Système';}
 function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.colorIdx==null?'':t.colorIdx].join('|');}
-function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
+function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));var lid=(t.lineId!=null&&!isNaN(parseInt(t.lineId,10)))?parseInt(t.lineId,10):allocLineId(); noteLineId(lid);return {id:t.id||uid(),lineId:lid,type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
 function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
 function chantierKnownColor(num){
@@ -886,6 +891,41 @@ function lsSaveSession(){try{localStorage.setItem('vb_session_v7',JSON.stringify
 function lsLoadSession(){try{var s=localStorage.getItem('vb_session_v7')||localStorage.getItem('vb_session');return s?JSON.parse(s):null;}catch(e){return null;}}
 
 // ── MIGRATION / DATA HELPERS ────────────────────────────────
+function migrateLineIds(){
+  function sig(o){return [o.type||'P',String(o.num||'').trim(),String(o.nom||'').trim(),String(o.mbl||'').trim()].join('|');}
+  function ensureTaskIds(store){
+    if(!store) return;
+    Object.keys(store).forEach(function(w){var W=store[w]; if(!W) return;
+      Object.keys(W).forEach(function(pid){var P=W[pid]; if(!P) return;
+        Object.keys(P).forEach(function(di){var d=P[di]; if(!d||!Array.isArray(d.tasks)) return;
+          d.tasks.forEach(function(t){if(t.lineId==null){t.lineId=allocLineId();} else {noteLineId(t.lineId);}});
+        });});});
+  }
+  function ensurePointageIds(pstore,planstore){
+    if(!pstore) return;
+    Object.keys(pstore).forEach(function(w){var W=pstore[w]; if(!W) return;
+      Object.keys(W).forEach(function(pid){var P=W[pid]; if(!P) return;
+        Object.keys(P).forEach(function(di){var day=P[di]; if(!day) return;
+          var planBySig={};
+          var pday=planstore&&planstore[w]&&planstore[w][pid]&&planstore[w][pid][di];
+          if(pday&&Array.isArray(pday.tasks)){pday.tasks.forEach(function(t){if(t.lineId!=null){var s=sig(t); if(planBySig[s]==null) planBySig[s]=[]; planBySig[s].push(t.lineId);}});}
+          function relink(arr){
+            if(!Array.isArray(arr)) return;
+            var used={};
+            arr.forEach(function(it){
+              if(it.lineId!=null){noteLineId(it.lineId); return;}
+              var s=sig(it); var pool=planBySig[s];
+              if(pool&&pool.length){var k=used[s]||0; if(k<pool.length){it.lineId=pool[k]; used[s]=k+1; noteLineId(it.lineId); return;}}
+              it.lineId=allocLineId();
+            });
+          }
+          relink(day.items); relink(day.extras);
+        });});});
+  }
+  ensureTaskIds(planning); ensureTaskIds(planningBureau);
+  ensurePointageIds(pointage, planning);
+  ensurePointageIds(pointageBureau, planningBureau);
+}
 function migrateState(){
   if(!Array.isArray(PERS)||!PERS.length) PERS=JSON.parse(JSON.stringify(DEFAULT_PERS));
   PERS=PERS.map(function(p,i){return normalizePerson(p,i);});
@@ -900,6 +940,7 @@ function migrateState(){
   if(!chefUsers.some(function(c){return c.role==='admin';})) chefUsers[0].role='admin';
   Object.keys(personPins||{}).forEach(function(k){personPins[k]=padPin(personPins[k],PIN_LENGTH);});
   appMeta=ensureMeta(appMeta);
+  migrateLineIds();
 }
 function cleanupPlanningPath(w,pid,di){
   var P=activePlanningStore();
@@ -990,9 +1031,9 @@ function syncPointageDay(pid,di,preserve){
   var before=JSON.stringify(day.items||[]);
   var tasks=getDayTasks(pid,di).filter(function(t){return !NOCH[t.type];});
   var map={};
-  (day.items||[]).forEach(function(it){if(it.taskId) map[it.taskId]=it;});
+  (day.items||[]).forEach(function(it){var k=(it.lineId!=null)?('L'+it.lineId):(it.taskId||null); if(k) map[k]=it;});
   day.items=tasks.map(function(t){
-    var old=map[t.id];
+    var old=map[(t.lineId!=null)?('L'+t.lineId):t.id];
     var newH;
     if(old){
       // Si le planning a changé d'heures depuis le dernier sync, le pointage suit le planning.
@@ -1003,7 +1044,7 @@ function syncPointageDay(pid,di,preserve){
     } else {
       newH=roundQuarter(t.h);
     }
-    return {taskId:t.id,type:t.type,num:t.num,nom:t.nom,
+    return {taskId:t.id,lineId:t.lineId,type:t.type,num:t.num,nom:t.nom,
             mbl:(old&&old.mbl!=null)?old.mbl:(t.mbl||''),
             remarque:(old&&old.remarque)?old.remarque:'',
             hidden:(old&&old.hidden)?true:false,
@@ -1030,13 +1071,13 @@ function pointageDayToTasks(pid,di){
     var colorIdx=null;
     if(it.num && cColorOverride[it.num]!==undefined) colorIdx=cColorOverride[it.num];
     else if(existingTaskMap[it.taskId] && existingTaskMap[it.taskId].colorIdx!=null) colorIdx=existingTaskMap[it.taskId].colorIdx;
-    tasks.push(sanitizeTask({id:it.taskId||undefined,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx}));
+    tasks.push(sanitizeTask({id:it.taskId||undefined,lineId:it.lineId,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx}));
   });
   var dft=defaultTypeForPerson(pid);
   (day.extras||[]).forEach(function(it){
     var h=roundQuarter(it.h); if(h<=0) return;
     if(!String(it.num||'').trim()&&!String(it.nom||'').trim()) return;
-    tasks.push(sanitizeTask({type:dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+    tasks.push(sanitizeTask({lineId:it.lineId,type:dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
   });
   return tasks;
 }
@@ -1650,7 +1691,7 @@ function adjustPointage(pid,di,idx,isExtra,delta){
   savePointageDay(pid,di,day,'Pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day);
   forceRenderPointage();
 }
-function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({lineId:allocLineId(),num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function setPointageItemField(pid,di,idx,isExtra,field,value){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
