@@ -325,6 +325,7 @@ input,select{font-size:14px}
 <div id="app">
   <div id="hdr">
     <h1>🪵 Semaine <span id="wnum">?</span></h1>
+    <span id="hdr-version" style="font-size:10px;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.3px"></span>
     <div class="wnav">
       <button onclick="chWk(-1)">◀</button>
       <span id="winfo"></span>
@@ -657,7 +658,7 @@ function roundQuarter(v){v=parseFloat(v)||0;return Math.round(v*4)/4;}
 function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
-var APP_VERSION="V1 260609-1557";
+var APP_VERSION="V1 260609-1606";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1636,7 +1637,7 @@ function pointageDetailHtml(pid){
   var reportLbl=isBureauContext()?'✓ Valider mon pointage → planning Bureau':'✓ Valider mon pointage → planning';
   var goPlanningTab=isBureauContext()?'planning_be':'planning';
   var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div>'+(isManager()?'<div class="person-actions"><button class="mini-btn" onclick="showTab(\'personnel\')">Changer</button><button class="mini-btn" onclick="showTab(\''+goPlanningTab+'\')">Voir planning</button></div>':'')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div>';
-  html+='<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>'+(isManager()?'<button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:10px 16px;width:100%;margin-top:6px" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync depuis planning</button>':'')+'</div>';
+  html+='<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>'+'</div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -1941,6 +1942,7 @@ function doPrint(){
 // ── INIT ─────────────────────────────────────────────────────
 lsLoad();
 migrateState();
+(function(){var hv=document.getElementById('hdr-version'); if(hv) hv.textContent=APP_VERSION;})();
 var sess=lsLoadSession();
 if(sess&&sess.role&&sess.userId){role=sess.role; userId=sess.userId; if(((role==='chef'||role==='admin')&&chefInfo(userId))||(role==='personnel'&&pinfo(userId).id===userId)){document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.add('show'); initApp();}}
 window.addEventListener('load', function(){initFirebase(); if(!wkMon) updateStatusBar();});
@@ -1951,6 +1953,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1557</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1606</span></div>
 </body>
 </html>

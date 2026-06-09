@@ -355,6 +355,7 @@ input,select{font-size:14px}
     <div class="item" id="sb-user">👤 Utilisateur :</div>
     <div class="item flex" id="sb-last">🕘 Dernière modification :</div>
     <div class="item" id="sb-week">📅 Semaine :</div>
+    <div class="item" id="sb-version" style="color:#94a3b8;font-weight:600" title="Version de l'application">⚙ </div>
     <div class="item flex" id="sb-clip">📋 Presse-papiers : vide</div>
     <button id="undo-btn" onclick="undoLast()" title="Annuler la dernière action (Ctrl+Z)">↶ Undo</button>
     <button id="hist-btn" onclick="openHist()">Historique</button>
@@ -703,7 +704,7 @@ function roundQuarter(v){v=parseFloat(v)||0;return Math.round(v*4)/4;}
 function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
-var APP_VERSION="V1 260609-1557";
+var APP_VERSION="V1 260609-1606";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -863,6 +864,7 @@ function updateStatusBar(){
   if(su) su.textContent='👤 Utilisateur : '+(userId?currentDisplayName():'non connecté');
   if(sl) sl.textContent=appMeta.lastModifiedAt?'🕘 Dernière modification : '+fmtDT(appMeta.lastModifiedAt)+' — '+(appMeta.lastModifiedBy||''):'🕘 Dernière modification : aucune';
   if(sw&&wkMon) sw.textContent='📅 Semaine : n° '+isoWeek(wkMon)+' ('+fmtD(wkMon,true)+' – '+fmtD(dayDate(5),true)+')';
+  var sv=document.getElementById('sb-version'); if(sv) sv.textContent='⚙ '+APP_VERSION;
   if(sc){
     if(dayClipboard&&dayClipboard.mode==='task'&&dayClipboard.task) sc.textContent='📋 Presse-papiers : tâche copiée — cliquez une autre date pour coller';
     else if(dayClipboard&&dayClipboard.mode==='day'&&dayClipboard.tasks&&dayClipboard.tasks.length) sc.textContent='📋 Presse-papiers : '+(dayClipboard.label||'journée copiée')+' — cliquez une autre date pour coller';
@@ -1812,7 +1814,7 @@ function renderPointage(){
     act.forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="'+selKey+'=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
     html+='</div>';
     var allBtnLbl=isBE?'✓ Reporter tout le pointage Bureau au planning Bureau':'✓ Reporter tout le pointage validé au planning';
-    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">'+allBtnLbl+'</button> <button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:9px 16px" title="Resync toute l\'équipe depuis le planning" onclick="resyncPointageAllWeek()">↻ Resync semaine depuis planning</button> <span style="font-size:12px;color:#64748b">Ou utilisez les boutons « Reporter ce jour » / « Resync planning » par personne.</span></div>';
+    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">'+allBtnLbl+'</button> <span style="font-size:12px;color:#64748b">Utilisez les boutons « Reporter ce jour » / « Reporter au planning » par personne.</span></div>';
     if(selId) html+=pointageDetailHtml(selId);
     else html+='<div style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne en '+ctxLbl+'. Ajoutez-en une dans ⚙️ Paramètres → Personnel.</div>';
   } else {
@@ -1834,7 +1836,7 @@ function pointageDetailHtml(pid){
   var p=pinfo(pid), col=tcol(p.g);
   var reportLbl=isBureauContext()?'✓ Reporter au planning Bureau':'✓ Reporter au planning';
   var ctxTitle=isBureauContext()?'Pointage B.E. semaine ':'Pointage semaine ';
-  var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+(isManager()?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>':'')+(isManager()?'<button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700" title="Remettre le pointage en miroir du planning (efface heures/remarques/imprévus)" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync planning</button>':'')+'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
+  var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+(isManager()?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>':'')+'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -2410,6 +2412,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1557</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1606</span></div>
 </body>
 </html>
