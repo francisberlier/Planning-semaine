@@ -711,7 +711,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260609-1713";
+var APP_VERSION="V1 260610-1052";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1915,7 +1915,7 @@ function pointageDetailHtml(pid){
       rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button></div>';
       var hiddenBanner=hiddenCount?'<button class="hidden-banner" onclick="restoreHiddenItems(\''+pid+'\','+di+')" title="Restaurer">+ '+hiddenCount+' chantier'+(hiddenCount>1?'s':'')+' masqué'+(hiddenCount>1?'s':'')+' · cliquer pour restaurer</button>':'';
       // Bouton de report par jour — copie le pointage du jour dans le planning du jour (force).
-      var dayReportBtn='<button class="day-report-btn" onclick="reportDayToPlanning(\''+pid+'\','+di+')" title="Remplacer le planning de ce jour par le pointage">✓ Reporter ce jour</button>';
+      var dayReportBtn=isManager()?'<button class="day-report-btn" onclick="reportDayToPlanning(\''+pid+'\','+di+')" title="Remplacer le planning de ce jour par le pointage">✓ Reporter ce jour</button>':'';
       html+='<div class="pt-day"><div class="pt-day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+hiddenBanner+dayReportBtn+'<span class="r">'+fmtH(pointageDayTotal(pid,di))+'</span></div>'+(count?rows:'<div class="empty-block">Aucune tâche planifiée</div>'+rows)+'</div>';
     }
   }
@@ -2423,6 +2423,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260609-1713</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260610-1052</span></div>
 </body>
 </html>
