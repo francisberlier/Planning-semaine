@@ -430,20 +430,29 @@ function ensureBureauRole(user){
   return new Promise(function(resolve){
     var email=String(user.email||'').toLowerCase(); if(!email||!db){resolve(null); return;}
     var key=sanitizeEmailKey(email);
-    db.ref('data/userRoles/'+key).once('value').then(function(snap){
-      var v=snap.val();
-      if(v && (v.role==='admin'||v.role==='chef')) { myScope=(v.scope==='prod'||v.scope==='be')?v.scope:'all'; resolve(v.role); return; }
-      var initRole=INITIAL_EMAIL_ROLES[email];
-      if(initRole==='admin'||initRole==='chef'){
-        var entry={email:email,role:initRole,nom:email.split('@')[0]};
-        db.ref('data/userRoles/'+key).set(entry).catch(function(){});
-        resolve(initRole); return;
-      }
-      // Pas admin/chef → personnel si l'email est lié à un ouvrier
-      var p=personByEmail(email);
-      if(p) { resolve('personnel'); return; }
-      resolve(null);
-    }).catch(function(){resolve(null);});
+    function readRole(attempt){
+      db.ref('data/userRoles/'+key).once('value').then(function(snap){
+        var v=snap.val();
+        try{ console.log('[ensureBureauRole] email=',email,' key=',key,' valeur lue=',v,' tentative=',attempt); }catch(e){}
+        if(v && (v.role==='admin'||v.role==='chef')) { myScope=(v.scope==='prod'||v.scope==='be')?v.scope:'all'; resolve(v.role); return; }
+        var initRole=INITIAL_EMAIL_ROLES[email];
+        if(initRole==='admin'||initRole==='chef'){
+          var entry={email:email,role:initRole,nom:email.split('@')[0]};
+          db.ref('data/userRoles/'+key).set(entry).catch(function(){});
+          resolve(initRole); return;
+        }
+        // Lecture vide ET pas de rôle initial : retenter une fois (anti-timing Firebase) avant de basculer en personnel
+        if(!v && attempt<2){ setTimeout(function(){ readRole(attempt+1); }, 700); return; }
+        // Pas admin/chef → personnel si l'email est lié à un ouvrier
+        var p=personByEmail(email);
+        if(p) { resolve('personnel'); return; }
+        resolve(null);
+      }).catch(function(){
+        if(attempt<2){ setTimeout(function(){ readRole(attempt+1); }, 700); return; }
+        resolve(null);
+      });
+    }
+    readRole(1);
   });
 }
 var dataRef=null, dataListener=null;
@@ -551,7 +560,9 @@ function fbSave(){
   if(!db||!fbConnected) return;
   ignoreRemoteUntil=Date.now()+1500;
   try{
-    db.ref('data').set({
+    // IMPORTANT : update() et non set() — set() écraserait tout le nœud 'data',
+    // supprimant userRoles (rôles chef/admin) qui est géré séparément.
+    db.ref('data').update({
       planning:planning,
       pointage:pointage,
       planningBureau:planningBureau,
@@ -721,7 +732,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260612-1231";
+var APP_VERSION="V1 260612-1300";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2473,6 +2484,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1231</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1300</span></div>
 </body>
 </html>
