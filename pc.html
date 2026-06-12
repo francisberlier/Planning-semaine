@@ -721,7 +721,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260612-1207";
+var APP_VERSION="V1 260612-1213";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1533,6 +1533,7 @@ function copyDayTasks(pid,di){
   return true;
 }
 function pasteDayTasks(pid,di){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   if(!(dayClipboard&&dayClipboard.mode==='day'&&dayClipboard.tasks&&dayClipboard.tasks.length)) return false;
   var existing=getDayTasks(pid,di);
   if(existing.length&&!sameJSON(existing,dayClipboard.tasks)){
@@ -1559,6 +1560,7 @@ function copyTaskAt(pid,di,taskIndex){
   return true;
 }
 function pasteTaskAt(pid,di){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   if(!(dayClipboard&&dayClipboard.mode==='task'&&dayClipboard.task)) return false;
   var tasks=getDayTasks(pid,di);
   var copy=clone(dayClipboard.task); copy.id=uid();
@@ -1623,6 +1625,7 @@ function moveTaskToDay(srcPid,srcDi,taskId,dstPid,dstDi){
   return true;
 }
 function handleDayDrop(ev,pid,di){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return false; }
   if(ev&&ev.preventDefault) ev.preventDefault();
   if(ev&&ev.currentTarget) ev.currentTarget.classList.remove('drag-target');
   if(!(dragTask&&dragTask.task)) return false;
@@ -1631,6 +1634,7 @@ function handleDayDrop(ev,pid,di){
   return false;
 }
 function deleteTaskAt(pid,di,taskIndex){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   var tasks=getDayTasks(pid,di);
   if(taskIndex<0||taskIndex>=tasks.length){toast('Aucune tâche à supprimer'); return false;}
   var removed=clone(tasks[taskIndex]);
@@ -1668,6 +1672,7 @@ function handleTaskBlockClick(ev,pid,di,taskIndex){
   return false;
 }
 function handleDayCellClick(ev,pid,di){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return false; }
   if(ev&&ev.altKey){toast('Alt+clic directement sur un bloc coloré pour supprimer cette tâche'); return false;}
   if(dayClipboard&&dayClipboard.mode==='task'&&!sameClipboardSource(pid,di)) return pasteTaskAt(pid,di);
   if(ev&&(ev.ctrlKey||ev.metaKey)){
@@ -1694,7 +1699,7 @@ function renderPlanning(){
   if(!pplList.length) html+='<tr><td colspan="8" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne '+(isBureauContext()?'au Bureau d\'étude':'en Production')+'. Pour en ajouter, allez dans ⚙️ Paramètres → Personnel et créez ou affectez une personne à la section '+(isBureauContext()?'<b>Bureau</b>':'Machine/Atelier/Finition/Transport/Pose/Magasin')+'.</td></tr>';
   pplList.forEach(function(p){
     var col=tcol(p.g); html+='<tr class="person-row" style="border-top-color:'+col+'">';
-    html+='<td class="pname"><div class="person-card"><div class="person-avatar" style="background:'+col+'">'+p.nom.charAt(0)+'</div><div class="person-meta"><b>'+p.nom+'</b><span style="color:'+col+'">'+p.poste+'</span></div>'+(isManager()?'<button class="resync-btn" title="Remettre le pointage de '+escAttr(p.nom)+' en miroir du planning (efface heures pointées, remarques, imprévus)" onclick="event.stopPropagation();resyncPointagePerson(\''+p.id+'\')">↻</button>':'')+'</div></td>';
+    html+='<td class="pname"><div class="person-card"><div class="person-avatar" style="background:'+col+'">'+p.nom.charAt(0)+'</div><div class="person-meta"><b>'+p.nom+'</b><span style="color:'+col+'">'+p.poste+'</span></div>'+((isManager()&&!readOnlyHere())?'<button class="resync-btn" title="Remettre le pointage de '+escAttr(p.nom)+' en miroir du planning (efface heures pointées, remarques, imprévus)" onclick="event.stopPropagation();resyncPointagePerson(\''+p.id+'\')">↻</button>':'')+'</div></td>';
     for(var di=0;di<6;di++){
       var tasks=getDayTasks(p.id,di), total=plannedDayTotal(p.id,di), cellCls='daycell'+(sameClipboardSource(p.id,di)?' clip-src':(dayClipboard?' clip-ready':''));
       html+='<td class="'+cellCls+'" onclick="return handleDayCellClick(event,\''+p.id+'\','+di+')" ondragover="return handleDayDragOver(event,\''+p.id+'\','+di+')" ondragenter="return handleDayDragEnter(event,\''+p.id+'\','+di+')" ondragleave="return handleDayDragLeave(event,\''+p.id+'\','+di+')" ondrop="return handleDayDrop(event,\''+p.id+'\','+di+')" title="Clic : éditer · Ctrl+clic : copier/coller la journée · Ctrl+clic sur un bloc : copier la tâche · Glisser un rectangle : déplacer"><div class="daycell-top"><span>'+(tasks.length?(tasks.length+' tâche'+(tasks.length>1?'s':'')):'—')+'</span><span class="day-total '+dayTotalClass(total,tasks.length)+'">'+(tasks.length?fmtH(total):'0h')+'</span></div>';
@@ -1714,6 +1719,7 @@ function renderPlanning(){
   restorePlanningScrollState(scrollState);
 }
 function applyCompanyAbsence(type){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   var ctxLbl=isBureauContext()?' Bureau':' Production';
   if(!confirm('Appliquer '+tinfo(type).lbl+' (8h) à toute l\'équipe'+ctxLbl+' sur toute la semaine courante ?')) return;
   pushUndo('Absence société'+ctxLbl+' — '+tinfo(type).lbl);
@@ -1723,6 +1729,7 @@ function applyCompanyAbsence(type){
 
 // ── DAY MODAL ────────────────────────────────────────────────
 function openDayModal(pid,di){
+  if(readOnlyHere()){ toast('🔒 Lecture seule — modification impossible hors de votre périmètre'); return; }
   editDay={pid:pid,di:di};
   editorTasks=clone(getDayTasks(pid,di));
   document.getElementById('mtitle').textContent=pinfo(pid).nom+' — '+DAYS[di]+' '+fmtD(dayDate(di),true);
@@ -2317,12 +2324,13 @@ function loadBureauRoles(){
       var scopeSel='';
       if(r.role==='chef'){
         var scopeLabels={all:'🌐 Tout',prod:'🔧 Production',be:'📐 Bureau d\'étude'};
+        var rScope=(r.scope==='prod'||r.scope==='be')?r.scope:'all';
         if(isAdmin()){
           scopeSel='<select class="mini-btn" style="margin-left:6px" onchange="changeBureauScope(\''+escAttr(r.key)+'\',\''+escAttr(r.email)+'\',this.value)">'
-            +['all','prod','be'].map(function(s){return '<option value="'+s+'"'+(r.scope===s?' selected':'')+'>'+scopeLabels[s]+'</option>';}).join('')
+            +['all','prod','be'].map(function(s){return '<option value="'+s+'"'+(rScope===s?' selected':'')+'>'+scopeLabels[s]+'</option>';}).join('')
             +'</select>';
         } else {
-          scopeSel='<span class="pin-tag" style="margin-left:6px">'+scopeLabels[r.scope]+'</span>';
+          scopeSel='<span class="pin-tag" style="margin-left:6px">'+scopeLabels[rScope]+'</span>';
         }
       }
       html+='<div class="setting-row"><div class="user-avatar-sm" style="background:'+(r.role==='admin'?'#92400e':'#1a3a5c')+'">'+escAttr(r.email).charAt(0).toUpperCase()+'</div><div class="meta"><b>'+escAttr(r.email)+'</b><span>'+roleBadge+statusBadge+scopeSel+'</span></div><div class="person-tools">'+tools+'</div></div>';
@@ -2459,6 +2467,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1207</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1213</span></div>
 </body>
 </html>
