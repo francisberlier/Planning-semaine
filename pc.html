@@ -429,7 +429,7 @@ function ensureBureauRole(user){
     var key=sanitizeEmailKey(email);
     db.ref('data/userRoles/'+key).once('value').then(function(snap){
       var v=snap.val();
-      if(v && (v.role==='admin'||v.role==='chef')) { resolve(v.role); return; }
+      if(v && (v.role==='admin'||v.role==='chef')) { myScope=(v.scope==='prod'||v.scope==='be')?v.scope:'all'; resolve(v.role); return; }
       var initRole=INITIAL_EMAIL_ROLES[email];
       if(initRole==='admin'||initRole==='chef'){
         var entry={email:email,role:initRole,nom:email.split('@')[0]};
@@ -662,6 +662,13 @@ var PALETTE=[
 
 // ── STATE ────────────────────────────────────────────────────
 var role=null, userId=null, loginPin='', loginSelectedId=null;
+var myScope='all'; // périmètre d'écriture du chef connecté : 'all' | 'prod' | 'be'
+function canWriteContext(){
+  // Admin écrit partout. Chef 'all' aussi. Sinon le scope doit correspondre au contexte courant.
+  if(role==='admin'||myScope==='all') return true;
+  return isBureauContext()?(myScope==='be'):(myScope==='prod');
+}
+function readOnlyHere(){ return isManager() && !canWriteContext(); }
 var wkMon=null, currentTab='';
 var planning={}, pointage={}, planningBureau={}, pointageBureau={}, legacyExtraPointage={}, cColorOverride={}, personPins={}, chefUsers=[], appMeta={lastModifiedAt:null,lastModifiedBy:'',history:[]};
 // Contexte actif : 'production' (Planning) ou 'bureau' (Planning B.E.)
@@ -711,7 +718,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260612-1011";
+var APP_VERSION="V1 260612-1023";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1064,6 +1071,7 @@ function getDayTasks(pid,di){
   return legacySlotsToTasks(day);
 }
 function setDayTasks(pid,di,tasks,opts){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return false; }
   tasks=(tasks||[]).map(sanitizeTask).filter(function(t){return t.h>0;});
   var prev=getDayTasks(pid,di);
   if(sameJSON(prev,tasks)) return false;
@@ -1149,6 +1157,7 @@ function syncPointageDay(pid,di,preserve){
   if(!isRendering && before!==JSON.stringify(day.items||[])){lsSave(); fbSave();}
 }
 function savePointageDay(pid,di,day,historyText,before,after){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); renderPointage(); return; }
   var w=wkKey();
   var PT=activePointageStore();
   if(!PT[w]) PT[w]={};
@@ -1251,6 +1260,7 @@ function resyncPointageDayFromPlanning(pid,di){
   return items.length;
 }
 function resyncPointagePerson(pid){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   if(!confirm('Resynchroniser le pointage de '+pinfo(pid).nom+' depuis le planning ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages seront effacés et remplacés par les valeurs du planning.')) return;
   var n=0;
   for(var di=0; di<6; di++) n+=resyncPointageDayFromPlanning(pid,di);
@@ -1259,6 +1269,7 @@ function resyncPointagePerson(pid){
   toast('↻ Pointage de '+pinfo(pid).nom+' resynchronisé ('+n+' tâche'+(n>1?'s':'')+')');
 }
 function resyncPointageAllWeek(){
+  if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   var ctxLbl=isBureauContext()?'Bureau d\'étude':'Production';
   if(!confirm('Resynchroniser le pointage de TOUTE l\'équipe '+ctxLbl+' depuis le planning de la semaine ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages de toute l\'équipe seront effacés et remplacés par les valeurs du planning.\n\nÀ utiliser uniquement pour repartir d\'une base propre.')) return;
   var people=0, total=0;
@@ -1412,7 +1423,7 @@ function doLogin(){
 function logout(){
   dayClipboard=null;
   if(!confirm('Se déconnecter ?')) return;
-  role=null; userId=null; bureauUser=null;
+  role=null; userId=null; bureauUser=null; myScope='all';
   try{localStorage.removeItem('vb_session_v7'); localStorage.removeItem('vb_session');}catch(e){}
   if(fbAuth){ try{fbAuth.signOut();}catch(e){} }
   document.getElementById('login-screen').classList.remove('hidden');
@@ -1668,7 +1679,8 @@ function renderPlanning(){
   var el=document.getElementById('tab-'+(isBureauContext()?'planning_be':'planning')); if(!el) return;
   var scrollState=getPlanningScrollState();
   var ctxLbl=isBureauContext()?'Bureau d\'étude':'Production';
-  var top='<div class="top-actions"><span style="font-size:11px;color:#15803d;font-weight:700">🏖 Appliquer 8h d\'absence à toute l\'équipe '+ctxLbl+' :</span>';
+  var roBanner=readOnlyHere()?'<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:8px 14px;border-radius:8px;margin-bottom:8px;font-weight:700;font-size:13px">🔒 Lecture seule — vous consultez le planning '+ctxLbl+' sans pouvoir le modifier (hors de votre périmètre).</div>':'';
+  var top=roBanner+'<div class="top-actions"><span style="font-size:11px;color:#15803d;font-weight:700">🏖 Appliquer 8h d\'absence à toute l\'équipe '+ctxLbl+' :</span>';
   ['V','C'].forEach(function(tp){top+='<button onclick="applyCompanyAbsence(\''+tp+'\')">'+tp+' · '+tinfo(tp).lbl+'</button>';});
   top+='<button onclick="manualSave(\'Planning\')" style="margin-left:auto;border-color:#bfdbfe;color:#1d4ed8">💾 Sauver</button>';
   top+='</div>';
@@ -1814,6 +1826,7 @@ function renderPointage(){
   var ctxLbl=isBE?'Bureau d\'étude':'Production';
   var html='';
   if(isManager()){
+    if(readOnlyHere()) html+='<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:8px 14px;border-radius:8px;margin-bottom:8px;font-weight:700;font-size:13px">🔒 Lecture seule — vous consultez le pointage '+ctxLbl+' sans pouvoir le modifier (hors de votre périmètre).</div>';
     // Filtrer par contexte : Production exclut Bureau, Bureau ne montre que Bureau
     var act=activePeople().filter(isBE?isBureauPerson:isProductionPerson);
     var selKey=isBE?'ptSelPersBE':'ptSelPers';
@@ -2279,7 +2292,7 @@ function loadBureauRoles(){
     // Aussi inclure les e-mails connus pas encore connectés
     var seenEmails={};
     var rows=[];
-    Object.keys(roles).forEach(function(k){var v=roles[k]; if(v && v.email){seenEmails[v.email.toLowerCase()]=1; rows.push({key:k,email:v.email,role:v.role||'chef',connected:true});}});
+    Object.keys(roles).forEach(function(k){var v=roles[k]; if(v && v.email){seenEmails[v.email.toLowerCase()]=1; rows.push({key:k,email:v.email,role:v.role||'chef',scope:(v.scope==='prod'||v.scope==='be')?v.scope:'all',connected:true});}});
     Object.keys(INITIAL_EMAIL_ROLES).forEach(function(em){if(!seenEmails[em.toLowerCase()]){rows.push({key:sanitizeEmailKey(em),email:em,role:INITIAL_EMAIL_ROLES[em],connected:false});}});
     rows.sort(function(a,b){if(a.role!==b.role) return a.role==='admin'?-1:1; return a.email.localeCompare(b.email);});
     if(!rows.length){box.innerHTML='<div style="font-size:12px;color:#94a3b8;padding:6px 0">Aucun compte autorisé.</div>'; return;}
@@ -2297,7 +2310,18 @@ function loadBureauRoles(){
       } else {
         tools='<span style="font-size:11px;color:#94a3b8">Géré par un admin</span>';
       }
-      html+='<div class="setting-row"><div class="user-avatar-sm" style="background:'+(r.role==='admin'?'#92400e':'#1a3a5c')+'">'+escAttr(r.email).charAt(0).toUpperCase()+'</div><div class="meta"><b>'+escAttr(r.email)+'</b><span>'+roleBadge+statusBadge+'</span></div><div class="person-tools">'+tools+'</div></div>';
+      var scopeSel='';
+      if(r.role==='chef'){
+        var scopeLabels={all:'🌐 Tout',prod:'🔧 Production',be:'📐 Bureau d\'étude'};
+        if(isAdmin()){
+          scopeSel='<select class="mini-btn" style="margin-left:6px" onchange="changeBureauScope(\''+escAttr(r.key)+'\',\''+escAttr(r.email)+'\',this.value)">'
+            +['all','prod','be'].map(function(s){return '<option value="'+s+'"'+(r.scope===s?' selected':'')+'>'+scopeLabels[s]+'</option>';}).join('')
+            +'</select>';
+        } else {
+          scopeSel='<span class="pin-tag" style="margin-left:6px">'+scopeLabels[r.scope]+'</span>';
+        }
+      }
+      html+='<div class="setting-row"><div class="user-avatar-sm" style="background:'+(r.role==='admin'?'#92400e':'#1a3a5c')+'">'+escAttr(r.email).charAt(0).toUpperCase()+'</div><div class="meta"><b>'+escAttr(r.email)+'</b><span>'+roleBadge+statusBadge+scopeSel+'</span></div><div class="person-tools">'+tools+'</div></div>';
     });
     box.innerHTML=html;
   }).catch(function(){box.innerHTML='<div style="font-size:12px;color:#dc2626;padding:6px 0">Erreur de lecture Firebase.</div>';});
@@ -2311,6 +2335,12 @@ function addBureauRole(){
   if(!r) return; r=String(r).trim().toLowerCase(); if(r!=='admin'&&r!=='chef'){toast('Rôle invalide'); return;}
   var key=sanitizeEmailKey(em);
   db.ref('data/userRoles/'+key).set({email:em,role:r,nom:em.split('@')[0]}).then(function(){toast('Compte pré-autorisé'); loadBureauRoles();}).catch(function(){toast('Erreur Firebase');});
+}
+function changeBureauScope(key,email,newScope){
+  if(!isAdmin()){toast('Réservé aux admins'); return;}
+  newScope=(newScope==='prod'||newScope==='be')?newScope:'all';
+  var lbl={all:'Tout',prod:'Production',be:'Bureau d\'étude'}[newScope];
+  db.ref('data/userRoles/'+key).update({scope:newScope}).then(function(){toast('Périmètre de '+email+' : '+lbl); loadBureauRoles();}).catch(function(){toast('Erreur Firebase');});
 }
 function changeBureauRole(key,email,newRole){
   if(!isAdmin()){toast('Réservé aux admins'); return;}
@@ -2425,6 +2455,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1011</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1023</span></div>
 </body>
 </html>
