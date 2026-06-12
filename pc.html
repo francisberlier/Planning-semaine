@@ -721,7 +721,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260612-1213";
+var APP_VERSION="V1 260612-1220";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2288,7 +2288,8 @@ function renderSettings(){
     var on=p.active!==false;
     var col=tcol(p.g); var opts=['M','A','F','T','P','G','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
     var dtOpts='<option value="">—</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
-    var toggle='<button class="toggle-active '+(on?'on':'off')+'" onclick="togglePersonActive(\''+p.id+'\')" title="'+(on?'Actif — cliquer pour désactiver':'Inactif — cliquer pour activer')+'"><span class="knob"></span><span class="lbl">'+(on?'Actif':'Inactif')+'</span></button>';
+    var canToggle=isAdmin();
+    var toggle='<button class="toggle-active '+(on?'on':'off')+'"'+(canToggle?' onclick="togglePersonActive(\''+p.id+'\')"':' disabled style="opacity:.55;cursor:not-allowed"')+' title="'+(canToggle?(on?'Actif — cliquer pour désactiver':'Inactif — cliquer pour activer'):'Seul un admin peut modifier le statut')+'"><span class="knob"></span><span class="lbl">'+(on?'Actif':'Inactif')+'</span></button>';
     html+=`<div class="setting-row${on?'':' row-inactive'}"><div class="user-avatar-sm" style="background:${col}">${escAttr(p.nom||'?').charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut (— = automatique selon la section)" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.email||'')}" placeholder="e-mail Firebase" type="email" onchange="updatePersonEmail('${p.id}',this.value)" /><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" />${toggle}</div></div>`;
   });
   html+=`</div>`;
@@ -2403,7 +2404,7 @@ function updatePersonEmail(pid,em){
   addHistoryEntry('E-mail : '+p.nom+' → '+(em||'(vide)'),before,p);
   lsSave(); fbSave(); updateStatusBar();
 }
-function togglePersonActive(pid){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=(p.active===false); sortPeople(); addHistoryEntry((p.active?'Activation':'Désactivation')+' personnel : '+p.nom,before,p); if(!p.active&&ptSelPers===pid) ptSelPers=(activePeople()[0]&&activePeople()[0].id)||null; lsSave(); fbSave(); renderSettings(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast(p.nom+(p.active?' activé':' désactivé'));}
+function togglePersonActive(pid){if(!isAdmin()){toast('🔒 Seul un admin peut activer/désactiver le personnel'); return;} var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=(p.active===false); sortPeople(); addHistoryEntry((p.active?'Activation':'Désactivation')+' personnel : '+p.nom,before,p); if(!p.active&&ptSelPers===pid) ptSelPers=(activePeople()[0]&&activePeople()[0].id)||null; lsSave(); fbSave(); renderSettings(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast(p.nom+(p.active?' activé':' désactivé'));}
 function archivePerson(pid){togglePersonActive(pid);}
 function restorePerson(pid){var p=pinfo(pid); if(p&&p.active===false) togglePersonActive(pid);}
 function resetPersonPin(pid){var p=pinfo(pid); if(!p||!p.id) return; if(!confirm('Supprimer le PIN GSM de '+p.nom+' ?')) return; var before=personPins[pid]||null; delete personPins[pid]; addHistoryEntry('Réinitialisation PIN personnel : '+p.nom,before,null); lsSave(); fbSave(); renderSettings(); toast('PIN personnel supprimé');}
@@ -2467,6 +2468,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1213</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1220</span></div>
 </body>
 </html>
