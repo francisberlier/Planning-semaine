@@ -711,7 +711,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260610-1052";
+var APP_VERSION="V1 260612-1006";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1460,6 +1460,8 @@ function showTab(id){
   currentTab=id;
   // Le contexte suit l'onglet : Planning B.E. ou Pointage B.E. → bureau ; le reste → production
   currentPlanningContext=(id==='planning_be'||id==='pointage_be')?'bureau':'production';
+  // Pour un utilisateur personnel, le contexte suit SA section (un personnel Bureau pointe en contexte bureau).
+  if(!isManager()){ currentPlanningContext=isBureauPerson(pinfo(userId))?'bureau':'production'; }
   document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.id===id);});
   document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='tab-'+id);});
   renderCurrentTab();
@@ -2423,6 +2425,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260610-1052</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1006</span></div>
 </body>
 </html>
