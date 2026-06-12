@@ -319,6 +319,9 @@ input,select{font-size:14px}
 /* === Bandeaux toujours visibles au scroll (PC) === */
 #app{height:100dvh;max-height:100dvh}
 .pillbar{position:sticky;top:0;z-index:40}
+/* === Pointage en lecture seule (hors périmètre du chef) === */
+.pointage-readonly .pt-row button,.pointage-readonly .pt-row input,.pointage-readonly .day-report-btn,.pointage-readonly .line-actions button,.pointage-readonly .pt-rm-x{pointer-events:none;opacity:.45;cursor:not-allowed}
+.pointage-readonly .day-head .day-report-btn{display:none}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -718,7 +721,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260612-1023";
+var APP_VERSION="V1 260612-1207";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1859,9 +1862,10 @@ function renderPointage(){
 }
 function pointageDetailHtml(pid){
   var p=pinfo(pid), col=tcol(p.g);
+  var ro=readOnlyHere();
   var reportLbl=isBureauContext()?'✓ Reporter au planning Bureau':'✓ Reporter au planning';
   var ctxTitle=isBureauContext()?'Pointage B.E. semaine ':'Pointage semaine ';
-  var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+(isManager()?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>':'')+'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button><div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
+  var html='<div class="pointage-wrap'+(ro?' pointage-readonly':'')+'" style="border-left:4px solid '+col+'"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+((isManager()&&!ro)?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>':'')+(ro?'':'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button>')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -2455,6 +2459,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1023</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1207</span></div>
 </body>
 </html>
