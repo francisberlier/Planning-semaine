@@ -721,7 +721,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260612-1220";
+var APP_VERSION="V1 260612-1231";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2346,8 +2346,13 @@ function addBureauRole(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){toast('E-mail invalide'); return;}
   var r=prompt('Rôle ? (tapez "admin" ou "chef")','chef');
   if(!r) return; r=String(r).trim().toLowerCase(); if(r!=='admin'&&r!=='chef'){toast('Rôle invalide'); return;}
+  var scope='all';
+  if(r==='chef'){
+    var sc=prompt('Périmètre du chef ?\n\n- tout (Production + Bureau)\n- prod (Production seulement)\n- be (Bureau d\'étude seulement)','tout');
+    if(sc){ sc=String(sc).trim().toLowerCase(); if(sc==='prod'||sc==='production') scope='prod'; else if(sc==='be'||sc==='bureau') scope='be'; else scope='all'; }
+  }
   var key=sanitizeEmailKey(em);
-  db.ref('data/userRoles/'+key).set({email:em,role:r,nom:em.split('@')[0]}).then(function(){toast('Compte pré-autorisé'); loadBureauRoles();}).catch(function(){toast('Erreur Firebase');});
+  db.ref('data/userRoles/'+key).set({email:em,role:r,nom:em.split('@')[0],scope:scope}).then(function(){toast('Compte pré-autorisé'); loadBureauRoles();}).catch(function(){toast('Erreur Firebase');});
 }
 function changeBureauScope(key,email,newScope){
   if(!isAdmin()){toast('Réservé aux admins'); return;}
@@ -2468,6 +2473,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1220</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1231</span></div>
 </body>
 </html>
