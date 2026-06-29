@@ -1057,6 +1057,7 @@ function applyPointageToPlanning(pid,di,opts){
   return changed;
 }
 function reportDayToPlanning(pid,di){
+  if(!isManager()){ toast('Action réservée au chef de production'); return; }
   var changed=applyPointageToPlanning(pid,di,{force:true});
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
@@ -1091,6 +1092,7 @@ function resyncPointageDayFromPlanning(pid,di){
   return items.length;
 }
 function resyncPointagePerson(pid){
+  if(!isManager()){ toast('Action réservée au chef de production'); return; }
   if(!confirm('Resynchroniser le pointage de '+pinfo(pid).nom+' depuis le planning ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages seront effacés et remplacés par les valeurs du planning.')) return;
   var n=0; for(var di=0; di<6; di++) n+=resyncPointageDayFromPlanning(pid,di);
   lsSave(); fbSave(); updateStatusBar();
@@ -1098,6 +1100,7 @@ function resyncPointagePerson(pid){
   toast('↻ Pointage de '+pinfo(pid).nom+' resynchronisé');
 }
 function validatePointagePerson(pid){
+  if(!isManager()){ toast('Action réservée au chef de production'); return; }
   var n=0; for(var di=0;di<6;di++){ if(applyPointageToPlanning(pid,di,{force:true})) n++; }
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='myplan') renderMyPlan();
@@ -1606,7 +1609,7 @@ function pointageDetailHtml(pid){
   var reportLbl=isBureauContext()?'✓ Valider mon pointage → planning Bureau':'✓ Valider mon pointage → planning';
   var goPlanningTab=isBureauContext()?'planning_be':'planning';
   var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div>'+(isManager()?'<div class="person-actions"><button class="mini-btn" onclick="showTab(\'personnel\')">Changer</button><button class="mini-btn" onclick="showTab(\''+goPlanningTab+'\')">Voir planning</button></div>':'')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div>';
-  html+='<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>'+(isManager()?'<button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:10px 16px;width:100%;margin-top:6px" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync depuis planning</button>':'')+'</div>';
+  html+=isManager()?('<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button><button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:10px 16px;width:100%;margin-top:6px" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync depuis planning</button></div>'):'';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -1650,7 +1653,7 @@ function pointageDetailHtml(pid){
         +'<button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;padding:8px 14px;font-weight:600" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">🗑️ Supprimer chantier</button>'
         +'</div>';
     });
-    rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button><button onclick="reportDayToPlanning(\''+pid+'\','+di+')" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700">✓ Reporter ce jour au planning</button></div>';
+    rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button>'+(isManager()?'<button onclick="reportDayToPlanning(\''+pid+'\','+di+')" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700">✓ Reporter ce jour au planning</button>':'')+'</div>';
     var hiddenBanner=hiddenCount?'<button class="hidden-banner" onclick="restoreHiddenItems(\''+pid+'\','+di+')" title="Restaurer">+ '+hiddenCount+' chantier'+(hiddenCount>1?'s':'')+' masqué'+(hiddenCount>1?'s':'')+'</button>':'';
     html+='<div class="pt-day"><div class="pt-day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+hiddenBanner+'<span class="r">'+fmtH(pointageDayTotal(pid,di))+'</span></div>'+(count?rows:'<div class="empty-block">Aucune tâche planifiée</div>'+rows)+'</div>';
   }
