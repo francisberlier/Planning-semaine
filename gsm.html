@@ -309,7 +309,6 @@ input,select{font-size:14px}
   <div class="login-logo">🪵</div>
   <div class="login-title">Verbruggen</div>
   <div class="login-sub">Planning &amp; Pointage</div>
-  <div class="login-ver" style="color:rgba(255,255,255,.45);font-size:11px;margin-top:-20px;margin-bottom:20px;letter-spacing:.3px">V1 260609-1557</div>
   <div class="login-card">
     <h3>Connexion</h3>
     <div id="bureau-form" style="margin-bottom:8px">
@@ -325,7 +324,6 @@ input,select{font-size:14px}
 <div id="app">
   <div id="hdr">
     <h1>🪵 Semaine <span id="wnum">?</span></h1>
-    <span id="hdr-version" style="font-size:10px;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.3px"></span>
     <div class="wnav">
       <button onclick="chWk(-1)">◀</button>
       <span id="winfo"></span>
@@ -464,7 +462,7 @@ function initFirebase(){
               ls.classList.add('hidden');
               document.getElementById('app').classList.add('show');
               if(!wkMon) wkMon=getMonday(new Date());
-              buildTabs(); if(!currentTab) currentTab=isManager()?'planning':'pointage'; updateHeader(); renderCurrentTab(); updateStatusBar();
+              buildTabs(); if(!currentTab) currentTab=isManager()?'planning':'pointage'; renderCurrentTab(); updateStatusBar();
             } else { updateStatusBar(); }
           }
         });
@@ -484,7 +482,7 @@ function fbSave(){
   if(!db||!fbConnected) return;
   ignoreRemoteUntil=Date.now()+1500;
   try{
-    db.ref('data').update({
+    db.ref('data').set({
       planning:planning,
       pointage:pointage,
       planningBureau:planningBureau,
@@ -493,8 +491,7 @@ function fbSave(){
       people:PERS,
       personPins:personPins,
       chefUsers:chefUsers,
-      meta:appMeta,
-      nextLineId:nextLineId
+      meta:appMeta
     });
   }catch(e){}
 }
@@ -515,7 +512,6 @@ function fbListen(){
     if(val.chefUsers) chefUsers=val.chefUsers;
     else if(val.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(val.chefPin)||DEFAULT_CHEF_PIN}];
     if(val.meta) appMeta=ensureMeta(val.meta);
-    if(val.nextLineId!=null){var rid=parseInt(val.nextLineId,10); if(!isNaN(rid)&&rid>nextLineId) nextLineId=rid;}
     migrateState();
     lsSave();
     updateStatusBar();
@@ -656,11 +652,6 @@ function tinfo(id){for(var i=0;i<TYPES.length;i++)if(TYPES[i].id===id)return TYP
 function tcol(id){return GCOL[id]||'#64748b';}
 function roundQuarter(v){v=parseFloat(v)||0;return Math.round(v*4)/4;}
 function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
-var nextLineId=1;
-function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
-var isRendering=false;
-var APP_VERSION="V1 260612-1300";
-function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function sameJSON(a,b){return JSON.stringify(a==null?null:a)===JSON.stringify(b==null?null:b);}
@@ -671,7 +662,7 @@ function fmtHShort(v){return fmtH(v).replace(' ','');}
 function ensureMeta(meta){meta=meta||{};return {lastModifiedAt:meta.lastModifiedAt||null,lastModifiedBy:meta.lastModifiedBy||'',history:Array.isArray(meta.history)?meta.history:[]};}
 function currentDisplayName(){if(bureauUser){var em=bureauUser.email||''; var nm=em.split('@')[0]||em; return nm.charAt(0).toUpperCase()+nm.slice(1);} if(isManager()&&userId){var c=chefInfo(userId);return c?c.nom:'Chef';} if(role==='personnel'&&userId){return pinfo(userId).nom;} return 'Système';}
 function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.colorIdx==null?'':t.colorIdx].join('|');}
-function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));var lid=(t.lineId!=null&&!isNaN(parseInt(t.lineId,10)))?parseInt(t.lineId,10):allocLineId(); noteLineId(lid);return {id:t.id||uid(),lineId:lid,type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
+function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
 function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
 function chantierKnownColor(num){
@@ -895,41 +886,6 @@ function lsSaveSession(){try{localStorage.setItem('vb_session_v7',JSON.stringify
 function lsLoadSession(){try{var s=localStorage.getItem('vb_session_v7')||localStorage.getItem('vb_session');return s?JSON.parse(s):null;}catch(e){return null;}}
 
 // ── MIGRATION / DATA HELPERS ────────────────────────────────
-function migrateLineIds(){
-  function sig(o){return [o.type||'P',String(o.num||'').trim(),String(o.nom||'').trim(),String(o.mbl||'').trim()].join('|');}
-  function ensureTaskIds(store){
-    if(!store) return;
-    Object.keys(store).forEach(function(w){var W=store[w]; if(!W) return;
-      Object.keys(W).forEach(function(pid){var P=W[pid]; if(!P) return;
-        Object.keys(P).forEach(function(di){var d=P[di]; if(!d||!Array.isArray(d.tasks)) return;
-          d.tasks.forEach(function(t){if(t.lineId==null){t.lineId=allocLineId();} else {noteLineId(t.lineId);}});
-        });});});
-  }
-  function ensurePointageIds(pstore,planstore){
-    if(!pstore) return;
-    Object.keys(pstore).forEach(function(w){var W=pstore[w]; if(!W) return;
-      Object.keys(W).forEach(function(pid){var P=W[pid]; if(!P) return;
-        Object.keys(P).forEach(function(di){var day=P[di]; if(!day) return;
-          var planBySig={};
-          var pday=planstore&&planstore[w]&&planstore[w][pid]&&planstore[w][pid][di];
-          if(pday&&Array.isArray(pday.tasks)){pday.tasks.forEach(function(t){if(t.lineId!=null){var s=sig(t); if(planBySig[s]==null) planBySig[s]=[]; planBySig[s].push(t.lineId);}});}
-          function relink(arr){
-            if(!Array.isArray(arr)) return;
-            var used={};
-            arr.forEach(function(it){
-              if(it.lineId!=null){noteLineId(it.lineId); return;}
-              var s=sig(it); var pool=planBySig[s];
-              if(pool&&pool.length){var k=used[s]||0; if(k<pool.length){it.lineId=pool[k]; used[s]=k+1; noteLineId(it.lineId); return;}}
-              it.lineId=allocLineId();
-            });
-          }
-          relink(day.items); relink(day.extras);
-        });});});
-  }
-  ensureTaskIds(planning); ensureTaskIds(planningBureau);
-  ensurePointageIds(pointage, planning);
-  ensurePointageIds(pointageBureau, planningBureau);
-}
 function migrateState(){
   if(!Array.isArray(PERS)||!PERS.length) PERS=JSON.parse(JSON.stringify(DEFAULT_PERS));
   PERS=PERS.map(function(p,i){return normalizePerson(p,i);});
@@ -944,7 +900,6 @@ function migrateState(){
   if(!chefUsers.some(function(c){return c.role==='admin';})) chefUsers[0].role='admin';
   Object.keys(personPins||{}).forEach(function(k){personPins[k]=padPin(personPins[k],PIN_LENGTH);});
   appMeta=ensureMeta(appMeta);
-  migrateLineIds();
 }
 function cleanupPlanningPath(w,pid,di){
   var P=activePlanningStore();
@@ -1035,9 +990,9 @@ function syncPointageDay(pid,di,preserve){
   var before=JSON.stringify(day.items||[]);
   var tasks=getDayTasks(pid,di).filter(function(t){return !NOCH[t.type];});
   var map={};
-  (day.items||[]).forEach(function(it){var k=(it.lineId!=null)?('L'+it.lineId):(it.taskId||null); if(k) map[k]=it;});
+  (day.items||[]).forEach(function(it){if(it.taskId) map[it.taskId]=it;});
   day.items=tasks.map(function(t){
-    var old=map[(t.lineId!=null)?('L'+t.lineId):t.id];
+    var old=map[t.id];
     var newH;
     if(old){
       // Si le planning a changé d'heures depuis le dernier sync, le pointage suit le planning.
@@ -1048,13 +1003,13 @@ function syncPointageDay(pid,di,preserve){
     } else {
       newH=roundQuarter(t.h);
     }
-    return {taskId:t.id,lineId:t.lineId,type:t.type,num:t.num,nom:t.nom,
+    return {taskId:t.id,type:t.type,num:t.num,nom:t.nom,
             mbl:(old&&old.mbl!=null)?old.mbl:(t.mbl||''),
             remarque:(old&&old.remarque)?old.remarque:'',
             hidden:(old&&old.hidden)?true:false,
             plannedH:t.h,h:newH};
   });
-  if(!isRendering && before!==JSON.stringify(day.items||[])){lsSave(); fbSave();}
+  if(before!==JSON.stringify(day.items||[])){lsSave(); fbSave();}
 }
 function savePointageDay(pid,di,day,historyText,before,after){
   var w=wkKey();
@@ -1075,13 +1030,13 @@ function pointageDayToTasks(pid,di){
     var colorIdx=null;
     if(it.num && cColorOverride[it.num]!==undefined) colorIdx=cColorOverride[it.num];
     else if(existingTaskMap[it.taskId] && existingTaskMap[it.taskId].colorIdx!=null) colorIdx=existingTaskMap[it.taskId].colorIdx;
-    tasks.push(sanitizeTask({id:it.taskId||undefined,lineId:it.lineId,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx}));
+    tasks.push(sanitizeTask({id:it.taskId||undefined,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx}));
   });
   var dft=defaultTypeForPerson(pid);
   (day.extras||[]).forEach(function(it){
     var h=roundQuarter(it.h); if(h<=0) return;
     if(!String(it.num||'').trim()&&!String(it.nom||'').trim()) return;
-    tasks.push(sanitizeTask({lineId:it.lineId,type:dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+    tasks.push(sanitizeTask({type:dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
   });
   return tasks;
 }
@@ -1184,7 +1139,7 @@ function doBureauLogin(){
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('app').classList.add('show');
       if(!wkMon) wkMon=getMonday(new Date());
-      buildTabs(); currentTab=currentTab||(isManager()?'planning':'pointage'); updateHeader(); renderCurrentTab(); updateStatusBar();
+      buildTabs(); currentTab=currentTab||(isManager()?'planning':'pointage'); renderCurrentTab(); updateStatusBar();
     });
   }).catch(function(err){
     var code=(err&&err.code)||'';
@@ -1322,19 +1277,27 @@ function buildTabs(){
     {id:'planning_be',lbl:'📋 Planning B.E.'},
     {id:'pointage',lbl:'⏱ Pointage'},
     {id:'pointage_be',lbl:'⏱ Pointage B.E.'}
-  ]:[{id:'pointage',lbl:'⏱ Mes heures'}];
+  ]:[
+    {id:'myplan',lbl:'📋 Mon planning'},
+    {id:'pointage',lbl:'⏱ Mes heures'}
+  ];
   tabs.forEach(function(t,i){
     var b=document.createElement('button'); b.textContent=t.lbl; b.dataset.id=t.id; b.onclick=function(){showTab(t.id);}; tabsEl.appendChild(b);
     var v=document.createElement('div'); v.className='view'; v.id='tab-'+t.id; content.appendChild(v);
     if(i===0) currentTab=t.id;
   });
-  currentTab = isManager() ? 'personnel' : 'pointage';
+  currentTab = isManager() ? 'personnel' : 'myplan';
   showTab(currentTab);
 }
 function showTab(id){
   currentTab=id;
-  currentPlanningContext=(id==='planning_be'||id==='pointage_be')?'bureau':'production';
-  if(!isManager()){ currentPlanningContext=isBureauPerson(pinfo(userId))?'bureau':'production'; }
+  if(isManager()){
+    currentPlanningContext=(id==='planning_be'||id==='pointage_be')?'bureau':'production';
+  } else {
+    // Ouvrier : contexte = sa section (g='B' → Bureau, sinon Production)
+    var p=pinfo(userId);
+    currentPlanningContext=(p && p.g==='B')?'bureau':'production';
+  }
   document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.id===id);});
   document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='tab-'+id);});
   renderCurrentTab();
@@ -1343,6 +1306,7 @@ function renderCurrentTab(){
   if(currentTab==='personnel') renderPersonnel();
   else if(currentTab==='planning'||currentTab==='planning_be') renderPlanning();
   else if(currentTab==='pointage'||currentTab==='pointage_be') renderPointage();
+  else if(currentTab==='myplan') renderMyPlan();
 }
 
 function renderPersonnel(){
@@ -1583,13 +1547,16 @@ function saveEditorDay(){
 // ── MY PLAN ──────────────────────────────────────────────────
 function renderMyPlan(){
   var el=document.getElementById('tab-myplan'); if(!el) return;
-  var p=pinfo(userId), col=tcol(p.g), html='<div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">Semaine '+isoWeek(wkMon)+'</div></div><div class="big">'+fmtH(plannedWeekTotal(userId))+'</div></div>';
+  var p=pinfo(userId), col=tcol(p.g);
+  var ctxLbl=isBureauContext()?'Mon planning B.E. semaine ':'Mon planning semaine ';
+  var ptTabId=isBureauContext()?'pointage_be':'pointage';
+  var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxLbl+isoWeek(wkMon)+'</div></div><div class="person-actions"><button class="mini-btn" onclick="showTab(\''+ptTabId+'\')">⏱ Aller pointer</button></div><div class="big">'+fmtH(plannedWeekTotal(userId))+'</div></div>';
   var has=false;
   for(var di=0;di<6;di++){
     var tasks=getDayTasks(userId,di), total=plannedDayTotal(userId,di); has=has||!!tasks.length;
     html+='<div class="day-block"><div class="day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+'<span class="r">'+fmtH(total)+'</span></div>';
     if(!tasks.length) html+='<div class="empty-block">Aucune tâche planifiée</div>';
-    else tasks.forEach(function(t){var c=taskColor(t), txt=taskDisplayLabel(t,true); html+='<div class="task-row" style="background:'+c.bg+'"><div class="task-info"><b>'+txt+'</b></div></div>';});
+    else tasks.forEach(function(t){var c=taskColor(t), txt=taskDisplayLabel(t,true); html+='<div class="task-row" style="background:'+c.bg+';border-left:4px solid '+c.brd+'"><div class="task-info"><b>'+txt+'</b></div></div>';});
     html+='</div>';
   }
   if(!has) html+='<div class="empty-block" style="text-align:center">Aucune tâche planifiée cette semaine.</div>';
@@ -1605,8 +1572,6 @@ function renderPointage(){
     return;
   }
   var st=el.scrollTop||0;
-  isRendering=true;
-  try{
   var isBE=isBureauContext();
   if(isManager()){
     var pid=selectedMobilePersonId();
@@ -1634,7 +1599,6 @@ function renderPointage(){
     el.innerHTML=pointageDetailHtml(userId);
   }
   setTimeout(function(){el.scrollTop=st;},0);
-  }finally{isRendering=false;}
 }
 function pointageDetailHtml(pid){
   var p=pinfo(pid), col=tcol(p.g);
@@ -1642,7 +1606,7 @@ function pointageDetailHtml(pid){
   var reportLbl=isBureauContext()?'✓ Valider mon pointage → planning Bureau':'✓ Valider mon pointage → planning';
   var goPlanningTab=isBureauContext()?'planning_be':'planning';
   var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div>'+(isManager()?'<div class="person-actions"><button class="mini-btn" onclick="showTab(\'personnel\')">Changer</button><button class="mini-btn" onclick="showTab(\''+goPlanningTab+'\')">Voir planning</button></div>':'')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div>';
-  html+='<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>'+'</div>';
+  html+='<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>'+(isManager()?'<button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:10px 16px;width:100%;margin-top:6px" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync depuis planning</button>':'')+'</div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -1686,7 +1650,7 @@ function pointageDetailHtml(pid){
         +'<button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;padding:8px 14px;font-weight:600" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">🗑️ Supprimer chantier</button>'
         +'</div>';
     });
-    rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button>'+(isManager()?'<button onclick="reportDayToPlanning(\''+pid+'\','+di+')" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700">✓ Reporter ce jour au planning</button>':'')+'</div>';
+    rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button><button onclick="reportDayToPlanning(\''+pid+'\','+di+')" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700">✓ Reporter ce jour au planning</button></div>';
     var hiddenBanner=hiddenCount?'<button class="hidden-banner" onclick="restoreHiddenItems(\''+pid+'\','+di+')" title="Restaurer">+ '+hiddenCount+' chantier'+(hiddenCount>1?'s':'')+' masqué'+(hiddenCount>1?'s':'')+'</button>':'';
     html+='<div class="pt-day"><div class="pt-day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+hiddenBanner+'<span class="r">'+fmtH(pointageDayTotal(pid,di))+'</span></div>'+(count?rows:'<div class="empty-block">Aucune tâche planifiée</div>'+rows)+'</div>';
   }
@@ -1699,7 +1663,7 @@ function adjustPointage(pid,di,idx,isExtra,delta){
   savePointageDay(pid,di,day,'Pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day);
   forceRenderPointage();
 }
-function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({lineId:allocLineId(),num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function setPointageItemField(pid,di,idx,isExtra,field,value){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
@@ -1790,8 +1754,7 @@ function renderSettings(){
     var col=tcol(p.g);
     var opts=['M','A','F','T','P','G','B'].map(function(g){return `<option value="${g}" ${p.g===g?'selected':''}>${sectionLabel(g)}</option>`;}).join('');
     var dtOpts='<option value="">—</option>'+TYPES.filter(function(t){return !NOCH[t.id];}).map(function(t){return `<option value="${t.id}" ${p.defaultType===t.id?'selected':''}>${t.lbl}</option>`;}).join('');
-    var canToggle=isAdmin();
-    var toggle='<button class="toggle-active '+(on?'on':'off')+'"'+(canToggle?' onclick="togglePersonActive(\''+p.id+'\')"':' disabled style="opacity:.55;cursor:not-allowed"')+' title="'+(canToggle?(on?'Actif':'Inactif'):'Seul un admin peut modifier le statut')+'"><span class="knob"></span><span class="lbl">'+(on?'Actif':'Inactif')+'</span></button>';
+    var toggle='<button class="toggle-active '+(on?'on':'off')+'" onclick="togglePersonActive(\''+p.id+'\')" title="'+(on?'Actif':'Inactif')+'"><span class="knob"></span><span class="lbl">'+(on?'Actif':'Inactif')+'</span></button>';
     html+=`<div class="setting-row${on?'':' row-inactive'}"><div class="user-avatar-sm" style="background:${col}">${p.nom.charAt(0)}</div><div class="person-editor"><input value="${escAttr(p.nom)}" placeholder="Nom" onchange="updatePersonField('${p.id}','nom',this.value)" /><select onchange="updatePersonSection('${p.id}',this.value)">${opts}</select><select title="Type par défaut (— = automatique selon la section)" onchange="updatePersonDefaultType('${p.id}',this.value)">${dtOpts}</select><input value="${escAttr(p.email||'')}" placeholder="e-mail Firebase" type="email" onchange="updatePersonEmail('${p.id}',this.value)" /><input value="${escAttr(p.gsm||'')}" placeholder="N° GSM" onchange="updatePersonField('${p.id}','gsm',this.value)" />${toggle}</div></div>`;
   });
   html+=`</div>`;
@@ -1897,7 +1860,7 @@ function updatePersonEmail(pid,em){
   addHistoryEntry('E-mail : '+p.nom+' → '+(em||'(vide)'),before,p);
   lsSave(); fbSave(); updateStatusBar();
 }
-function togglePersonActive(pid){if(!isAdmin()){toast('🔒 Seul un admin peut activer/désactiver le personnel'); return;} var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=(p.active===false); sortPeople(); addHistoryEntry((p.active?'Activation':'Désactivation')+' personnel : '+p.nom,before,p); lsSave(); fbSave(); renderSettings(); buildUserList(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast(p.nom+(p.active?' activé':' désactivé'));}
+function togglePersonActive(pid){var p=pinfo(pid); if(!p||!p.id) return; var before=clone(p); p.active=(p.active===false); sortPeople(); addHistoryEntry((p.active?'Activation':'Désactivation')+' personnel : '+p.nom,before,p); lsSave(); fbSave(); renderSettings(); buildUserList(); if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning(); if(currentTab==='pointage') renderPointage(); updateStatusBar(); toast(p.nom+(p.active?' activé':' désactivé'));}
 
 // ── PIN MODAL ────────────────────────────────────────────────
 function pmLen(){return (pinEditTarget&&pinEditTarget.kind==='chef')?CHEF_PIN_LENGTH:PIN_LENGTH;}
@@ -1948,7 +1911,6 @@ function doPrint(){
 // ── INIT ─────────────────────────────────────────────────────
 lsLoad();
 migrateState();
-(function(){var hv=document.getElementById('hdr-version'); if(hv) hv.textContent=APP_VERSION;})();
 var sess=lsLoadSession();
 if(sess&&sess.role&&sess.userId){role=sess.role; userId=sess.userId; if(((role==='chef'||role==='admin')&&chefInfo(userId))||(role==='personnel'&&pinfo(userId).id===userId)){document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.add('show'); initApp();}}
 window.addEventListener('load', function(){initFirebase(); if(!wkMon) updateStatusBar();});
@@ -1959,6 +1921,5 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260612-1300</span></div>
 </body>
 </html>
