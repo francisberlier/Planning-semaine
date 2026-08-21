@@ -108,7 +108,7 @@ input,select{font-size:14px}
 .top-actions button{padding:5px 10px;border-radius:8px;border:1px solid #86efac;background:#fff;color:#15803d;font-size:11px;font-weight:700}
 
 /* Mobile day blocks */
-#tab-myplan,#tab-pointage,#tab-settings,#tab-export{overflow:auto;-webkit-overflow-scrolling:touch;padding:12px}
+#tab-myplan,#tab-pointage,#tab-pointage_be,#tab-settings,#tab-export{overflow:auto;-webkit-overflow-scrolling:touch;padding:12px}
 #tab-settings{overflow-y:scroll !important}
 .day-block,.pt-day,.ex-card,.setting-box{background:#fff;border-radius:var(--r);margin-bottom:10px;overflow:hidden;box-shadow:var(--sh)}
 .day-title,.pt-day-title{background:var(--bleu);color:#fff;padding:8px 14px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px}
@@ -736,7 +736,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260821-1030";
+var APP_VERSION="V1 260821-1045";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2513,6 +2513,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260821-1030</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260821-1045</span></div>
 </body>
 </html>
