@@ -491,6 +491,7 @@ function applyRemoteData(val){
   if(val.personPins) personPins=val.personPins;
   if(val.chefUsers) chefUsers=val.chefUsers;
   else if(val.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(val.chefPin)||DEFAULT_CHEF_PIN}];
+  if(val.chantiers) CHANTIERS=normalizeChantiersList(val.chantiers);
   if(val.meta) appMeta=ensureMeta(val.meta);
   if(val.nextLineId!=null){var rid=parseInt(val.nextLineId,10); if(!isNaN(rid)&&rid>nextLineId) nextLineId=rid;}
   migrateState();
@@ -571,6 +572,7 @@ function fbSave(){
       people:PERS,
       personPins:personPins,
       chefUsers:chefUsers,
+      chantiers:CHANTIERS,
       meta:appMeta,
       nextLineId:nextLineId
     });
@@ -736,7 +738,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260821-1045";
+var APP_VERSION="V1 260821-1130";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -814,6 +816,81 @@ function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(
 function personByEmail(email){if(!email) return null; email=String(email).toLowerCase(); for(var i=0;i<PERS.length;i++){if(PERS[i].email && PERS[i].email===email && PERS[i].active!==false) return PERS[i];} return null;}
 function makePersonId(name){return 'pers_'+String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,18)+'_'+Date.now().toString(36).slice(-4);}
 function manualSave(label){lsSave(); fbSave(); updateStatusBar(); toast((label||'Données')+' sauvegardé');}
+// ══════════ TABLE DE RÉFÉRENCE DES CHANTIERS ══════════
+// Référentiel centralisé géré par admin/chef/Bureau. Le personnel (pointage) ne peut
+// QUE sélectionner un chantier dans cette liste — plus de saisie libre = plus de doublons.
+var CHANTIERS=[]; // [{num:'9159', nom:'Coven Garden'}, ...]
+function normalizeChantiersList(v){
+  var out=[]; if(!v) return out;
+  var arr=Array.isArray(v)?v:Object.keys(v).map(function(k){return v[k];});
+  var seen={};
+  arr.forEach(function(c){
+    if(!c) return;
+    var num=String(c.num||'').trim(), nom=String(c.nom||'').trim();
+    if(!num && !nom) return;
+    var key=num.toLowerCase()+'|'+nom.toLowerCase();
+    if(seen[key]) return; seen[key]=1;
+    out.push({num:num, nom:nom});
+  });
+  out.sort(function(a,b){return (b.num||'').localeCompare(a.num||'','fr',{numeric:true,sensitivity:'base'});});
+  return out;
+}
+function chantierTableLabel(c){var parts=[]; if(c.num) parts.push(c.num); if(c.nom) parts.push(c.nom); return parts.join(' — ')||'Chantier';}
+function addChantierToTable(num,nom){
+  num=String(num||'').trim(); nom=String(nom||'').trim();
+  if(!num){ toast('Le N° de chantier est obligatoire'); return false; }
+  for(var i=0;i<CHANTIERS.length;i++){
+    if(CHANTIERS[i].num.toLowerCase()===num.toLowerCase()){ toast('Le chantier '+num+' existe déjà ('+chantierTableLabel(CHANTIERS[i])+')'); return false; }
+  }
+  CHANTIERS.push({num:num, nom:nom});
+  CHANTIERS=normalizeChantiersList(CHANTIERS);
+  lsSave(); fbSave(); updateStatusBar();
+  toast('✓ Chantier '+num+(nom?' — '+nom:'')+' ajouté');
+  return true;
+}
+function removeChantierFromTable(num){
+  num=String(num||'').trim();
+  var found=CHANTIERS.find(function(c){return c.num===num;});
+  if(!found) return;
+  if(!confirm('Supprimer le chantier '+chantierTableLabel(found)+' de la liste ?\n\nLes tâches déjà encodées avec ce numéro ne sont pas modifiées — seul le référentiel change.')) return;
+  CHANTIERS=CHANTIERS.filter(function(c){return c.num!==num;});
+  lsSave(); fbSave(); updateStatusBar();
+  toast('Chantier '+num+' retiré de la liste');
+  if(currentTab==='chantiers') renderChantiers();
+}
+function importChantiersFromPlanning(){
+  // Scanne tout l'historique (Production + Bureau) et ajoute les chantiers absents de la table.
+  var found={}, added=0;
+  function scan(store){
+    Object.keys(store||{}).forEach(function(wk){
+      var wkData=store[wk]||{};
+      Object.keys(wkData).forEach(function(pid){
+        Object.keys(wkData[pid]||{}).forEach(function(di){
+          var raw=wkData[pid][di];
+          var tasks=Array.isArray(raw&&raw.tasks)?raw.tasks:[];
+          tasks.forEach(function(t){
+            if(!t||NOCH[t.type]) return;
+            var num=String(t.num||'').trim(); if(!num) return;
+            var nom=String(t.nom||'').trim();
+            if(!found[num.toLowerCase()] || (nom && !found[num.toLowerCase()].nom)) found[num.toLowerCase()]={num:num,nom:nom};
+          });
+        });
+      });
+    });
+  }
+  scan(planning); scan(planningBureau);
+  Object.keys(found).forEach(function(k){
+    var c=found[k];
+    var exists=CHANTIERS.some(function(x){return x.num.toLowerCase()===c.num.toLowerCase();});
+    if(!exists){ CHANTIERS.push({num:c.num,nom:c.nom}); added++; }
+  });
+  if(added){
+    CHANTIERS=normalizeChantiersList(CHANTIERS);
+    lsSave(); fbSave(); updateStatusBar();
+  }
+  toast(added?('✓ '+added+' chantier'+(added>1?'s':'')+' importé'+(added>1?'s':'')+' depuis le planning'):'Aucun nouveau chantier à importer');
+  if(currentTab==='chantiers') renderChantiers();
+}
 function weekChantierCatalog(){
   var out=[], seen={}, w=wkKey(), P=activePlanningStore(), pw=P[w]||{};
   Object.keys(pw).forEach(function(pid){
@@ -949,6 +1026,7 @@ function lsSave(){
     localStorage.setItem('vb_people_v18',JSON.stringify(PERS));
     localStorage.setItem('vb_personpins_v7',JSON.stringify(personPins));
     localStorage.setItem('vb_chefusers_v7',JSON.stringify(chefUsers));
+    localStorage.setItem('vb_chantiers_v1',JSON.stringify(CHANTIERS));
     localStorage.setItem('vb_meta_v7',JSON.stringify(appMeta));
   }catch(e){}
 }
@@ -963,6 +1041,7 @@ function lsLoad(){
     var ppl=localStorage.getItem('vb_people_v18'); if(ppl) PERS=JSON.parse(ppl);
     var pp=localStorage.getItem('vb_personpins_v7')||localStorage.getItem('vb_pins'); if(pp) personPins=JSON.parse(pp);
     var cu=localStorage.getItem('vb_chefusers_v7'); if(cu) chefUsers=JSON.parse(cu);
+    var ch=localStorage.getItem('vb_chantiers_v1'); if(ch) CHANTIERS=normalizeChantiersList(JSON.parse(ch));
     if(!chefUsers.length){var oldPin=localStorage.getItem('vb_chefpin'); if(oldPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(oldPin)||DEFAULT_CHEF_PIN}];}
     var m=localStorage.getItem('vb_meta_v7')||localStorage.getItem('vb_meta'); if(m) appMeta=ensureMeta(JSON.parse(m));
   }catch(e){}
@@ -1486,17 +1565,19 @@ function buildTabs(){
       {id:'planning_be',lbl:'📋 Planning B.E.'},
       {id:'pointage',lbl:'⏱ Pointage'},
       {id:'pointage_be',lbl:'⏱ Pointage B.E.'},
+      {id:'chantiers',lbl:'📁 Chantiers'},
       {id:'dashboard',lbl:'📊 Dashboard'},
       {id:'settings',lbl:'⚙️ Paramètres'},
       {id:'export',lbl:'📦 Export'}
     ];
   } else if(isBureauStaffUser()){
-    // Bureau d'étude : accès étendu (les 5 onglets sans Paramètres ni Export)
+    // Bureau d'étude : accès étendu (sans Paramètres ni Export)
     tabs=[
       {id:'planning',lbl:'📋 Planning'},
       {id:'planning_be',lbl:'📋 Planning B.E.'},
       {id:'pointage',lbl:'⏱ Pointage'},
       {id:'pointage_be',lbl:'⏱ Pointage B.E.'},
+      {id:'chantiers',lbl:'📁 Chantiers'},
       {id:'dashboard',lbl:'📊 Dashboard'}
     ];
   } else {
@@ -1524,9 +1605,47 @@ function renderCurrentTab(){
   if(currentTab==='planning'||currentTab==='planning_be') renderPlanning();
   else if(currentTab==='myplan') renderMyPlan();
   else if(currentTab==='pointage'||currentTab==='pointage_be') renderPointage();
+  else if(currentTab==='chantiers') renderChantiers();
   else if(currentTab==='dashboard') renderDashboard();
   else if(currentTab==='settings') renderSettings();
   else if(currentTab==='export') renderExport();
+}
+
+// ── TABLE DES CHANTIERS (référentiel) ────────────────────────
+function renderChantiers(){
+  var el=document.getElementById('tab-chantiers'); if(!el) return;
+  var html='<div class="dash-wrap">';
+  html+='<div class="summary-card" style="border-left:4px solid #0e7490"><div><b>📁 Table des chantiers</b><div style="font-size:12px;color:#64748b">Référentiel centralisé — le personnel sélectionne ses chantiers imprévus dans cette liste (plus de saisie libre, plus de doublons).</div></div><div class="big">'+CHANTIERS.length+'</div></div>';
+  // Formulaire d'ajout
+  html+='<div class="dash-box"><h3>➕ Ajouter un chantier</h3>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
+    +'<input id="new-ch-num" placeholder="N° (ex: 9234)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;width:140px;font-size:14px"/>'
+    +'<input id="new-ch-nom" placeholder="Client / libellé (ex: Notalex)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;flex:1;min-width:220px;font-size:14px"/>'
+    +'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 18px" onclick="submitNewChantier()">Ajouter</button>'
+    +'</div>'
+    +'<div style="margin-top:10px"><button class="mini-btn" style="background:#e0f2fe;border:1px solid #7dd3fc;color:#075985;font-weight:700" onclick="importChantiersFromPlanning()">⇊ Importer les chantiers du planning existant</button> <span style="font-size:12px;color:#64748b">Scanne tout l\'historique Production + Bureau et ajoute les numéros manquants.</span></div>'
+    +'</div>';
+  // Liste
+  html+='<div class="dash-box"><h3>📋 Chantiers ('+CHANTIERS.length+')</h3>';
+  if(!CHANTIERS.length){
+    html+='<div class="hist-empty">Liste vide. Ajoutez un chantier ci-dessus ou importez depuis le planning.</div>';
+  } else {
+    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th style="width:140px">N°</th><th>Client / libellé</th><th style="width:90px"></th></tr></thead><tbody>';
+    CHANTIERS.forEach(function(c){
+      html+='<tr><td><b>'+escAttr(c.num)+'</b></td><td>'+escAttr(c.nom||'')+'</td><td><button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;font-weight:700" onclick="removeChantierFromTable(\''+escAttr(c.num)+'\')">🗑 Supprimer</button></td></tr>';
+    });
+    html+='</tbody></table></div>';
+  }
+  html+='</div></div>';
+  el.innerHTML=html;
+}
+function submitNewChantier(){
+  var numEl=document.getElementById('new-ch-num'), nomEl=document.getElementById('new-ch-nom');
+  if(!numEl) return;
+  if(addChantierToTable(numEl.value, nomEl?nomEl.value:'')){
+    renderChantiers();
+    var n2=document.getElementById('new-ch-num'); if(n2) n2.focus();
+  }
 }
 
 // ── PLANNING ─────────────────────────────────────────────────
@@ -1959,18 +2078,22 @@ function pointageDetailHtml(pid){
           +'<button class="mini-btn pt-rm-x" title="Supprimer cette ligne" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
           +'</div>';
       } else {
-        // Vrai chantier imprévu (N° inconnu) — interface complète d'encodage
+        // Chantier imprévu non encore sélectionné : SÉLECTION UNIQUEMENT dans la table des chantiers.
+        // Plus de saisie libre (source de doublons). Les chefs/BE gèrent la table via l'onglet 📁 Chantiers.
+        var chOptions=CHANTIERS.map(function(c,cidx){
+          var sel=(c.num===String(it.num||'').trim())?' selected':'';
+          return '<option value="'+cidx+'"'+sel+'>'+escAttr(chantierTableLabel(c))+'</option>';
+        }).join('');
+        var emptyMsg=CHANTIERS.length?'':'<span class="pt-planned" style="color:#b45309">La liste des chantiers est vide — demandez à un chef ou au Bureau de la compléter (onglet 📁 Chantiers).</span>';
         rows+='<div class="pt-row pt-extra" style="border-left:6px dashed #94a3b8">'
           +'<div class="pt-info"><div class="extra-fields">'
-          +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
-          +'<input id="extra-num-'+pid+'-'+di+'-'+idx+'" placeholder="N°" value="'+escAttr(it.num||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'num\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
-          +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Client / libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
+          +'<div class="extra-preset" style="flex:1"><select style="width:100%" onchange="applyChantierTableOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">— Choisir un chantier dans la liste —</option>'+chOptions+'</select></div>'
           +'</div>'
           +'<div class="pt-fields">'
           +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
           +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
           +'</div>'
-          +'<span class="pt-planned">Chantier imprévu : choisissez un chantier existant ou encodez un nouveau numéro et descriptif.</span></div>'
+          +emptyMsg+'</div>'
           +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><input class="hval hval-input" type="number" step="0.25" min="0" value="'+it.h+'" onchange="setPointageHours(\''+pid+'\','+di+','+idx+',true,this.value)" onfocus="focusedExtraField=\'pthx-'+pid+'-'+di+'-'+idx+'\';this.id=\'pthx-'+pid+'-'+di+'-'+idx+'\'" onblur="focusedExtraField=null"/><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
           +'<button class="mini-btn pt-rm-x" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">✕</button>'
           +'</div>';
@@ -2038,6 +2161,16 @@ function restoreHiddenItems(pid,di){
 }
 function setExtraField(pid,di,idx,f,v){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; day.extras[idx][f]=v; day.pointed=true; savePointageDay(pid,di,day,null);}
 function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; day.pointed=true; savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
+// Sélection depuis la table de référence des chantiers (seul moyen d'assigner un chantier imprévu)
+function applyChantierTableOption(pid,di,idx,val){
+  var day=getPointageDay(pid,di); if(!day.extras[idx]) return;
+  var c=CHANTIERS[parseInt(val,10)]; if(!c) return;
+  day.extras[idx].num=c.num||'';
+  day.extras[idx].nom=c.nom||'';
+  day.pointed=true;
+  savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day));
+  renderPointage();
+}
 
 
 // ── DASHBOARD ────────────────────────────────────────────────
@@ -2513,6 +2646,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260821-1045</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260821-1130</span></div>
 </body>
 </html>

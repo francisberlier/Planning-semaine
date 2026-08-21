@@ -482,7 +482,9 @@ function fbSave(){
   if(!db||!fbConnected) return;
   ignoreRemoteUntil=Date.now()+1500;
   try{
-    db.ref('data').set({
+    // IMPORTANT : update() et non set() — set() écraserait tout le nœud 'data',
+    // supprimant userRoles (comptes admin/chef), nextLineId et chantiers gérés ailleurs.
+    db.ref('data').update({
       planning:planning,
       pointage:pointage,
       planningBureau:planningBureau,
@@ -491,6 +493,7 @@ function fbSave(){
       people:PERS,
       personPins:personPins,
       chefUsers:chefUsers,
+      chantiers:CHANTIERS,
       meta:appMeta
     });
   }catch(e){}
@@ -511,6 +514,7 @@ function fbListen(){
     if(val.personPins) personPins=val.personPins;
     if(val.chefUsers) chefUsers=val.chefUsers;
     else if(val.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(val.chefPin)||DEFAULT_CHEF_PIN}];
+    if(val.chantiers) CHANTIERS=normalizeChantiersList(val.chantiers);
     if(val.meta) appMeta=ensureMeta(val.meta);
     migrateState();
     lsSave();
@@ -718,6 +722,33 @@ function normalizePerson(p,i){p=p||{}; var g=String(p.g||'P').toUpperCase(); if(
 function personByEmail(email){if(!email) return null; email=String(email).toLowerCase(); for(var i=0;i<PERS.length;i++){if(PERS[i].email && PERS[i].email===email && PERS[i].active!==false) return PERS[i];} return null;}
 function makePersonId(name){return 'pers_'+String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,18)+'_'+Date.now().toString(36).slice(-4);}
 function manualSave(label){lsSave(); fbSave(); updateStatusBar(); toast((label||'Données')+' sauvegardé');}
+// ── TABLE DE RÉFÉRENCE DES CHANTIERS (gérée sur PC, consommée ici) ──
+var CHANTIERS=[];
+function normalizeChantiersList(v){
+  var out=[]; if(!v) return out;
+  var arr=Array.isArray(v)?v:Object.keys(v).map(function(k){return v[k];});
+  var seen={};
+  arr.forEach(function(c){
+    if(!c) return;
+    var num=String(c.num||'').trim(), nom=String(c.nom||'').trim();
+    if(!num && !nom) return;
+    var key=num.toLowerCase()+'|'+nom.toLowerCase();
+    if(seen[key]) return; seen[key]=1;
+    out.push({num:num, nom:nom});
+  });
+  out.sort(function(a,b){return (b.num||'').localeCompare(a.num||'','fr',{numeric:true,sensitivity:'base'});});
+  return out;
+}
+function chantierTableLabel(c){var parts=[]; if(c.num) parts.push(c.num); if(c.nom) parts.push(c.nom); return parts.join(' — ')||'Chantier';}
+function applyChantierTableOption(pid,di,idx,val){
+  var day=getPointageDay(pid,di); if(!day.extras[idx]) return;
+  var c=CHANTIERS[parseInt(val,10)]; if(!c) return;
+  day.extras[idx].num=c.num||'';
+  day.extras[idx].nom=c.nom||'';
+  day.pointed=true;
+  savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day));
+  renderPointage();
+}
 function weekChantierCatalog(){
   var out=[], seen={}, w=wkKey(), P=activePlanningStore(), pw=P[w]||{};
   Object.keys(pw).forEach(function(pid){
@@ -852,6 +883,7 @@ function lsSave(){
     localStorage.setItem('vb_people_v18',JSON.stringify(PERS));
     localStorage.setItem('vb_personpins_v7',JSON.stringify(personPins));
     localStorage.setItem('vb_chefusers_v7',JSON.stringify(chefUsers));
+    localStorage.setItem('vb_chantiers_v1',JSON.stringify(CHANTIERS));
     localStorage.setItem('vb_meta_v7',JSON.stringify(appMeta));
   }catch(e){}
 }
@@ -866,6 +898,7 @@ function lsLoad(){
     var ppl=localStorage.getItem('vb_people_v18'); if(ppl) PERS=JSON.parse(ppl);
     var pp=localStorage.getItem('vb_personpins_v7')||localStorage.getItem('vb_pins'); if(pp) personPins=JSON.parse(pp);
     var cu=localStorage.getItem('vb_chefusers_v7'); if(cu) chefUsers=JSON.parse(cu);
+    var ch=localStorage.getItem('vb_chantiers_v1'); if(ch) CHANTIERS=normalizeChantiersList(JSON.parse(ch));
     if(!chefUsers.length){var oldPin=localStorage.getItem('vb_chefpin'); if(oldPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(oldPin)||DEFAULT_CHEF_PIN}];}
     var m=localStorage.getItem('vb_meta_v7')||localStorage.getItem('vb_meta'); if(m) appMeta=ensureMeta(JSON.parse(m));
   }catch(e){}
@@ -1664,22 +1697,26 @@ function pointageDetailHtml(pid){
     });
     (day.extras||[]).forEach(function(it,idx){
       has=true; count++;
-      var catalog=weekChantierCatalog();
       var knownCol=chantierKnownColor(it.num);
       var borderStyle=knownCol?('6px solid '+knownCol.brd):'6px dashed #94a3b8';
       var topline=knownCol?'<div class="pt-topline"><b>'+escAttr(it.num)+(it.nom?' '+escAttr(it.nom):'')+'</b></div>':'';
+      // SÉLECTION UNIQUEMENT dans la table de référence des chantiers (gérée sur PC par chefs/BE).
+      var chOptions=CHANTIERS.map(function(c,cidx){
+        var sel=(c.num===String(it.num||'').trim())?' selected':'';
+        return '<option value="'+cidx+'"'+sel+'>'+escAttr(chantierTableLabel(c))+'</option>';
+      }).join('');
+      var emptyMsg=CHANTIERS.length?'':'<span class="pt-planned" style="color:#b45309">Liste de chantiers vide — demandez à un chef de la compléter.</span>';
       rows+='<div class="pt-row pt-extra" style="border-left:'+borderStyle+'">'
         +'<div class="pt-info">'
         +topline
         +'<div class="extra-fields">'
-        +'<div class="extra-preset"><select onchange="applyWeekExtraOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">Chantier de la semaine…</option>'+catalog.map(function(opt,cidx){var sel=((opt.num||'')===String(it.num||'').trim()&&(opt.nom||'')===String(it.nom||'').trim())?' selected':''; return '<option value="'+cidx+'"'+sel+'>'+weekChantierLabel(opt)+'</option>';}).join('')+'</select></div>'
-        +'<button class="num-field-btn" onclick="openExtraNumPad(\''+pid+'\','+di+','+idx+')">'+((it.num||'').trim()?escAttr(it.num):'N° chantier')+'</button>'
-        +'<input id="extra-nom-'+pid+'-'+di+'-'+idx+'" placeholder="Libellé" value="'+escAttr(it.nom||'')+'" onchange="setExtraField(\''+pid+'\','+di+','+idx+',\'nom\',this.value)" onfocus="focusedExtraField=this.id" onblur="if(focusedExtraField===this.id)focusedExtraField=null"/>'
+        +'<div class="extra-preset" style="flex:1"><select style="width:100%" onchange="applyChantierTableOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">— Choisir un chantier —</option>'+chOptions+'</select></div>'
         +'</div>'
         +'<div class="pt-fields">'
         +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
         +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
-        +'</div></div>'
+        +'</div>'
+        +emptyMsg+'</div>'
         +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,-0.25)">−</button><button class="hval-btn" onclick="openHoursPad(\''+pid+'\','+di+','+idx+',true)">'+fmtHShort(it.h)+'</button><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',true,0.25)">+</button></div>'
         +'<button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;padding:8px 14px;font-weight:600" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">🗑️ Supprimer chantier</button>'
         +'</div>';
