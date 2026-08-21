@@ -784,7 +784,7 @@ function undoLast(){
 }
 function plannedDayTotal(pid,di){var arr=getDayTasks(pid,di);var s=0;for(var i=0;i<arr.length;i++)s+=roundQuarter(arr[i].h);return roundQuarter(s);}
 function plannedWeekTotal(pid){var s=0;for(var di=0;di<6;di++)s+=plannedDayTotal(pid,di);return roundQuarter(s);}
-function pointageDayTotal(pid,di){var day=getPointageDay(pid,di);var s=0;if(day){(day.items||[]).forEach(function(it){s+=roundQuarter(it.h);});(day.extras||[]).forEach(function(it){s+=roundQuarter(it.h);});}return roundQuarter(s);}
+function pointageDayTotal(pid,di){var day=getPointageDay(pid,di);var s=0;if(day){(day.items||[]).forEach(function(it){if(it.hidden) return; s+=roundQuarter(it.h);});(day.extras||[]).forEach(function(it){s+=roundQuarter(it.h);});}return roundQuarter(s);}
 function pointageWeekTotal(pid){var s=0;for(var di=0;di<6;di++)s+=pointageDayTotal(pid,di);return roundQuarter(s);}
 
 function addHistoryEntry(text,before,after){
@@ -995,7 +995,10 @@ function syncPointageDay(pid,di,preserve){
   day.items=tasks.map(function(t){
     var old=map[t.id];
     var newH;
-    if(old){
+    if(old && old.hidden){
+      // Item masqué : reste à 0h quoi qu'il arrive au planning (sinon heures fantômes dans le total).
+      newH=0;
+    } else if(old){
       // Si le planning a changé d'heures depuis le dernier sync, le pointage suit le planning.
       // Sinon, conserver ce que l'utilisateur a pointé.
       var oldPlannedH=roundQuarter(old.plannedH||0);
@@ -1027,6 +1030,7 @@ function pointageDayToTasks(pid,di){
   var existingTaskMap={};
   getDayTasks(pid,di).forEach(function(t){if(t.id) existingTaskMap[t.id]=t;});
   (day.items||[]).forEach(function(it){
+    if(it.hidden) return; // les masqués ne sont jamais reportés au planning
     var h=roundQuarter(it.h); if(h<=0) return;
     var colorIdx=null;
     if(it.num && cColorOverride[it.num]!==undefined) colorIdx=cColorOverride[it.num];

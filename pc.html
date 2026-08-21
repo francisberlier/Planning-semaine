@@ -736,7 +736,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260817-1620";
+var APP_VERSION="V1 260821-1030";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -880,7 +880,7 @@ function undoLast(){
 }
 function plannedDayTotal(pid,di){var arr=getDayTasks(pid,di);var s=0;for(var i=0;i<arr.length;i++)s+=roundQuarter(arr[i].h);return roundQuarter(s);}
 function plannedWeekTotal(pid){var s=0;for(var di=0;di<6;di++)s+=plannedDayTotal(pid,di);return roundQuarter(s);}
-function pointageDayTotal(pid,di){var day=getPointageDay(pid,di);var s=0;if(day){(day.items||[]).forEach(function(it){s+=roundQuarter(it.h);});(day.extras||[]).forEach(function(it){s+=roundQuarter(it.h);});}return roundQuarter(s);}
+function pointageDayTotal(pid,di){var day=getPointageDay(pid,di);var s=0;if(day){(day.items||[]).forEach(function(it){if(it.hidden) return; s+=roundQuarter(it.h);});(day.extras||[]).forEach(function(it){s+=roundQuarter(it.h);});}return roundQuarter(s);}
 function pointageWeekTotal(pid){var s=0;for(var di=0;di<6;di++)s+=pointageDayTotal(pid,di);return roundQuarter(s);}
 
 function addHistoryEntry(text,before,after){
@@ -1158,7 +1158,11 @@ function syncPointageDay(pid,di,preserve){
   day.items=tasks.map(function(t){
     var old=map[(t.lineId!=null)?('L'+t.lineId):t.id];
     var newH;
-    if(old){
+    if(old && old.hidden){
+      // Item masqué par l'utilisateur : il reste à 0h quoi qu'il arrive au planning.
+      // (Sinon un changement de planning réinjecte des heures invisibles qui faussent le total.)
+      newH=0;
+    } else if(old){
       // Si le planning a changé d'heures depuis le dernier sync (old.plannedH != t.h),
       // le pointage doit suivre la nouvelle valeur du planning.
       // Sinon (planning inchangé), conserver ce que l'utilisateur a pointé.
@@ -1194,6 +1198,7 @@ function pointageDayToTasks(pid,di){
   var existingTaskMap={};
   getDayTasks(pid,di).forEach(function(t){if(t.id) existingTaskMap[t.id]=t;});
   (day.items||[]).forEach(function(it){
+    if(it.hidden) return; // les masqués ne sont jamais reportés au planning
     var h=roundQuarter(it.h); if(h<=0) return;
     // colorIdx : override > tâche existante (préservation) > null
     var colorIdx=null;
@@ -2508,6 +2513,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260817-1620</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260821-1030</span></div>
 </body>
 </html>
