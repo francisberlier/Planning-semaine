@@ -577,6 +577,9 @@ var PRODUCTION_TYPES={M:1,A:1,F:1,T:1,P:1,G:1};
 var DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 var LEGACY_SLOTS=['AM1','AM2','PM1','PM2'];
 var NOCH={CE:1,V:1,C:1,ML:1,B:1};
+// Numéros de chantier spéciaux (codes Vertuoza) représentant des absences — exclus des totaux.
+var ABSENCE_NUMS={'0005':'C','0006':'ML','0007':'CE'};
+function isAbsenceNum(num){return !!ABSENCE_NUMS[String(num||'').trim()];}
 var NOCH_COLOR={
   CE:{bg:'#fecaca',fg:'#7f1d1d',brd:'#ef4444'},
   V:{bg:'#fef08a',fg:'#713f12',brd:'#eab308'},
@@ -813,9 +816,9 @@ function undoLast(){
   toast('↶ Annulation : '+(s.label||'dernière action'));
   return true;
 }
-function plannedDayTotal(pid,di){var arr=getDayTasks(pid,di);var s=0;for(var i=0;i<arr.length;i++)s+=roundQuarter(arr[i].h);return roundQuarter(s);}
+function plannedDayTotal(pid,di){var arr=getDayTasks(pid,di);var s=0;for(var i=0;i<arr.length;i++){if(isAbsenceNum(arr[i].num)) continue; s+=roundQuarter(arr[i].h);}return roundQuarter(s);}
 function plannedWeekTotal(pid){var s=0;for(var di=0;di<6;di++)s+=plannedDayTotal(pid,di);return roundQuarter(s);}
-function pointageDayTotal(pid,di){var day=getPointageDay(pid,di);var s=0;if(day){(day.items||[]).forEach(function(it){if(it.hidden) return; s+=roundQuarter(it.h);});(day.extras||[]).forEach(function(it){s+=roundQuarter(it.h);});}return roundQuarter(s);}
+function pointageDayTotal(pid,di){var day=getPointageDay(pid,di);var s=0;if(day){(day.items||[]).forEach(function(it){if(it.hidden) return; if(isAbsenceNum(it.num)) return; s+=roundQuarter(it.h);});(day.extras||[]).forEach(function(it){if(isAbsenceNum(it.num)) return; s+=roundQuarter(it.h);});}return roundQuarter(s);}
 function pointageWeekTotal(pid){var s=0;for(var di=0;di<6;di++)s+=pointageDayTotal(pid,di);return roundQuarter(s);}
 
 function addHistoryEntry(text,before,after){
