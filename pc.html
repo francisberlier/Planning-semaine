@@ -800,7 +800,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260828-0930";
+var APP_VERSION="V1 260828-1000";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2518,6 +2518,7 @@ function toggleChantierBlock(id){
 }
 function setDashFilter(f){dashFilter=f; renderDashboard();}
 function togglePersonDetail(safePid){var el=document.getElementById('pdetail-'+safePid); if(el) el.style.display=(el.style.display==='none')?'':'none';}
+function toggleM12Detail(safePid){var els=document.querySelectorAll('.m12-'+safePid); els.forEach(function(el){el.style.display=(el.style.display==='none')?'':'none';});}
 function renderDashboard(){
   var el=document.getElementById('tab-dashboard'); if(!el) return;
   var agg=dashboardAggregate();
@@ -2554,44 +2555,39 @@ function renderDashboard(){
       +'<td style="color:#b91c1c">'+fmtH(d.abs)+'</td>'
       +'<td style="color:#b45309">'+fmtH(d.conges)+'</td>'
       +'<td>'+dashBar(d.year,maxYear,tcol(p.g))+'</td></tr>';
-    // Sous-ligne : ventilation des heures travaillées par section/activité (année + détail par mois)
+    // Sous-ligne : ventilation annuelle par section (pastilles). Le détail par mois
+    // se trouve dans le tableau « Par personne · 12 derniers mois » (clic sur le nom).
     var bt=d.byType||{};
     var typeOrder=['M','A','F','T','P','G','D','PL','E','GS','R','CNC'];
-    var activeTypes=typeOrder.filter(function(tk){return bt[tk]>0;});
-    var chips=activeTypes.map(function(tk){
+    var chips=typeOrder.filter(function(tk){return bt[tk]>0;}).map(function(tk){
       var ti=tinfo(tk);
       return '<span style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700"><span style="width:8px;height:8px;border-radius:50%;background:'+(ti.col||'#94a3b8')+'"></span>'+ti.lbl+' · '+fmtHShort(bt[tk])+'</span>';
     }).join(' ');
-    // Tableau ventilation par mois (12 derniers mois, colonnes = sections actives sur la période)
-    var btm=d.byTypeMonth||{};
-    var monthTypes=typeOrder.filter(function(tk){return (agg.months||[]).some(function(mo){return btm[mo.key]&&btm[mo.key][tk]>0;});});
-    var monthTable='';
-    if(monthTypes.length){
-      monthTable='<div style="margin-top:8px;overflow-x:auto"><table style="border-collapse:collapse;font-size:10.5px"><thead><tr><th style="text-align:left;padding:2px 8px;color:#64748b;font-weight:700">Mois</th>';
-      monthTypes.forEach(function(tk){var ti=tinfo(tk); monthTable+='<th style="padding:2px 8px;color:'+(ti.col||'#64748b')+';font-weight:800">'+ti.lbl+'</th>';});
-      monthTable+='<th style="padding:2px 8px;color:#1a2d5a;font-weight:800">Total</th></tr></thead><tbody>';
-      (agg.months||[]).forEach(function(mo){
-        var rowTot=0, cells='';
-        monthTypes.forEach(function(tk){var v=(btm[mo.key]&&btm[mo.key][tk])||0; rowTot+=v; cells+='<td style="padding:2px 8px;text-align:right;border-top:1px solid #eef2f7">'+(v?fmtHShort(v):'·')+'</td>';});
-        if(rowTot>0) monthTable+='<tr><td style="padding:2px 8px;border-top:1px solid #eef2f7;font-weight:700;color:#334155">'+mo.lbl+'</td>'+cells+'<td style="padding:2px 8px;text-align:right;border-top:1px solid #eef2f7;font-weight:800">'+fmtHShort(rowTot)+'</td></tr>';
-      });
-      monthTable+='</tbody></table></div>';
-    }
     html+='<tr class="dash-person-detail" id="pdetail-'+safePid+'" style="display:none"><td colspan="8" style="background:#f8fafc;padding:8px 14px">'
-      +(chips?('<span style="font-size:11px;color:#64748b;margin-right:8px">Ventilation par section (année) :</span>'+chips+monthTable):'<span style="font-size:11px;color:#94a3b8">Aucune heure travaillée sur la période.</span>')
+      +(chips?('<span style="font-size:11px;color:#64748b;margin-right:8px">Ventilation par section (année) :</span>'+chips+' <span style="font-size:10px;color:#94a3b8">· détail mensuel : tableau « 12 derniers mois » plus bas</span>'):'<span style="font-size:11px;color:#94a3b8">Aucune heure travaillée sur la période.</span>')
       +'</td></tr>';
   });
   html+='</tbody></table></div></div>';
 
   // ── PAR PERSONNE — 12 MOIS ──
-  html+='<div class="dash-box"><h3>👥 Par personne · 12 derniers mois</h3><div class="dash-table-wrap"><table class="dash-table dash-12"><thead><tr><th>Personne</th>';
+  html+='<div class="dash-box"><h3>👥 Par personne · 12 derniers mois <span style="font-size:11px;color:#94a3b8;font-weight:400">— cliquer sur un nom pour la ventilation par section</span></h3><div class="dash-table-wrap"><table class="dash-table dash-12"><thead><tr><th>Personne</th>';
   agg.months.forEach(function(mo){html+='<th>'+mo.lbl+'</th>';});
   html+='<th>Total</th></tr></thead><tbody>';
+  var m12TypeOrder=['M','A','F','T','P','G','D','PL','E','GS','R','CNC'];
   pers.forEach(function(p){
-    var d=agg.persons[p.id]||{m12:{}}; var tot=0;
-    html+='<tr><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+'</td>';
+    var d=agg.persons[p.id]||{m12:{},byTypeMonth:{}}; var tot=0;
+    var safePid12=p.id.replace(/[^a-zA-Z0-9_-]/g,'_');
+    var btm=d.byTypeMonth||{};
+    var actTypes=m12TypeOrder.filter(function(tk){return agg.months.some(function(mo){return btm[mo.key]&&btm[mo.key][tk]>0;});});
+    html+='<tr'+(actTypes.length?' style="cursor:pointer" onclick="toggleM12Detail(\''+safePid12+'\')" title="Cliquer pour la ventilation par section"':'')+'><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+(actTypes.length?' <span style="color:#94a3b8;font-size:10px">▾</span>':'')+'</td>';
     agg.months.forEach(function(mo){var v=(d.m12&&d.m12[mo.key])||0; tot+=v; html+='<td>'+(v?fmtHShort(v):'·')+'</td>';});
     html+='<td><b>'+fmtH(tot)+'</b></td></tr>';
+    // Sous-lignes : une par section active, valeurs par mois
+    actTypes.forEach(function(tk){
+      var ti=tinfo(tk), rowTot=0, cells='';
+      agg.months.forEach(function(mo){var v=(btm[mo.key]&&btm[mo.key][tk])||0; rowTot+=v; cells+='<td style="font-size:10.5px;color:#475569">'+(v?fmtHShort(v):'·')+'</td>';});
+      html+='<tr class="m12-detail m12-'+safePid12+'" style="display:none;background:#f8fafc"><td style="padding-left:26px;font-size:10.5px"><span class="dash-dot" style="background:'+(ti.col||'#94a3b8')+';width:7px;height:7px"></span><span style="color:'+(ti.col||'#475569')+';font-weight:700">'+ti.lbl+'</span></td>'+cells+'<td style="font-size:10.5px;font-weight:800;color:#334155">'+fmtHShort(rowTot)+'</td></tr>';
+    });
   });
   html+='</tbody></table></div></div>';
 
@@ -2867,6 +2863,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260828-0930</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260828-1000</span></div>
 </body>
 </html>
