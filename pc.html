@@ -800,7 +800,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260828-1000";
+var APP_VERSION="V1 260831-0900";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2396,15 +2396,20 @@ function dashboardAggregate(){
     // scope: 'prod' ou 'bureau'
     Object.keys(store||{}).forEach(function(wk){
       var mon=new Date(wk); if(isNaN(mon)) return;
-      var wkY=mon.getFullYear(), wkM=mon.getMonth();
-      var ym=wkY+'-'+('0'+(wkM+1)).slice(-2);
       var inThisWeek=(wk===curWeekKey);
-      var inThisYear=(wkY===curYear);
-      var inThisMonth=(wkY===curYear&&wkM===curMonth);
       var wkData=store[wk]||{};
       Object.keys(wkData).forEach(function(pid){
         var days=wkData[pid]||{};
         Object.keys(days).forEach(function(di){
+          // Le mois/année d'attribution se calcule sur la DATE RÉELLE DU JOUR (lundi + di),
+          // pas sur le lundi de la semaine — sinon une semaine à cheval sur deux mois
+          // (ex. lundi 31/08 → mardi 01/09...) reporte tout sur le mauvais mois.
+          var dnum=parseInt(di,10)||0;
+          var dDate=new Date(mon); dDate.setDate(dDate.getDate()+dnum);
+          var dY=dDate.getFullYear(), dM=dDate.getMonth();
+          var ym=dY+'-'+('0'+(dM+1)).slice(-2);
+          var inThisYear=(dY===curYear);
+          var inThisMonth=(dY===curYear&&dM===curMonth);
           var tasks=tasksFromDayObj(days[di]);
           tasks.forEach(function(t){
             var h=roundQuarter(t.h); if(h<=0) return;
@@ -2863,6 +2868,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260828-1000</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260831-0900</span></div>
 </body>
 </html>
