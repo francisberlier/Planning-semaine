@@ -1143,7 +1143,7 @@ function pointageDayToTasks(pid,di){
   (day.extras||[]).forEach(function(it){
     var h=roundQuarter(it.h); if(h<=0) return;
     if(!String(it.num||'').trim()&&!String(it.nom||'').trim()) return;
-    tasks.push(sanitizeTask({type:dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+    tasks.push(sanitizeTask({type:it.type||dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
   });
   return tasks;
 }

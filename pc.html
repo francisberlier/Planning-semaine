@@ -800,7 +800,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260831-0900";
+var APP_VERSION="V1 260831-0930";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1417,7 +1417,9 @@ function pointageDayToTasks(pid,di){
   (day.extras||[]).forEach(function(it){
     var h=roundQuarter(it.h); if(h<=0) return;
     if(!String(it.num||'').trim()&&!String(it.nom||'').trim()) return;
-    tasks.push(sanitizeTask({lineId:it.lineId,type:dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+    // La section choisie au pointage (menu Section) est transférée avec le chantier ;
+    // le type par défaut de la personne ne sert que de repli pour les anciens extras sans type.
+    tasks.push(sanitizeTask({lineId:it.lineId,type:it.type||dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
   });
   return tasks;
 }
@@ -2868,6 +2870,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260831-0900</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260831-0930</span></div>
 </body>
 </html>
