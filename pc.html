@@ -94,6 +94,7 @@ input,select{font-size:14px}
 .person-meta span{font-size:10px;font-weight:700}
 .daycell-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:10px;color:#64748b;font-weight:700}
 .day-total{padding:2px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:800}
+.pt-type{padding:6px 8px;border:1px solid var(--bd);border-radius:8px;font-size:12px;font-weight:600;background:#f8fafc;max-width:150px}
 .day-total.warn{background:#fff7ed;color:#c2410c}
 .day-total.ok{background:#dcfce7;color:#166534}
 .day-total.abs{background:#fdf4ff;color:#a21caf}
@@ -799,7 +800,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260821-1430";
+var APP_VERSION="V1 260828-0900";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1378,7 +1379,7 @@ function syncPointageDay(pid,di,preserve){
     } else {
       newH=roundQuarter(t.h);
     }
-    return {taskId:t.id,lineId:t.lineId,type:t.type,num:t.num,nom:t.nom,
+    return {taskId:t.id,lineId:t.lineId,type:(old&&old.type)?old.type:t.type,num:t.num,nom:t.nom,
             mbl:(old&&old.mbl!=null)?old.mbl:(t.mbl||''),
             remarque:(old&&old.remarque)?old.remarque:'',
             hidden:(old&&old.hidden)?true:false,
@@ -2053,22 +2054,28 @@ function renderEditor(){
   else totalLbl=fmtH(total);
   if(!complete) totalLbl+=' · objectif 8h';
   var editorScroll=getEditorScrollState();
-  editorSuggestions=recentTaskTemplates(10);
   document.getElementById('editor-summary').innerHTML='<div><span>Total du jour</span><strong class="'+(complete?'ok':'warn')+'">'+totalLbl+'</strong></div><div class="editor-summary-actions"><button class="mini-btn" onclick="setSingleTask8h()">1 tâche / 8h</button><button class="mini-btn" onclick="setSingleAbsence(\'C\')">Congé 8h</button><button class="mini-btn" onclick="setSingleAbsence(\'V\')">Vacances 8h</button></div>';
   var list=document.getElementById('editor-list');
-  var suggestionsHtml=editorSuggestions.length?'<div class="editor-suggestions"><span class="lbl">Tâches proposées :</span>'+editorSuggestions.map(function(t,idx){return '<button class="suggest-chip" onclick="addSuggestedTask('+idx+')"><b>'+t.type+'</b> · '+(t.num||'sans devis')+(t.nom?(' · '+escAttr(t.nom)):'')+'</button>';}).join('')+'</div>':'';
   if(!editorTasks.length){
-    list.innerHTML=suggestionsHtml+'<div class="empty-block" style="padding:14px;border:1px dashed var(--bd);border-radius:12px;background:#fff">Aucune tâche encodée pour ce jour.</div><div class="editor-empty-actions"><button class="mini-btn" onclick="addEditorTask()">Ajouter la première tâche</button><button class="mini-btn" onclick="setSingleTask8h()">Créer 1 tâche de 8h</button><button class="mini-btn" onclick="setSingleAbsence(\'C\')">Congé 8h</button><button class="mini-btn" onclick="setSingleAbsence(\'V\')">Vacances 8h</button></div>';
+    list.innerHTML='<div class="empty-block" style="padding:14px;border:1px dashed var(--bd);border-radius:12px;background:#fff">Aucune tâche encodée pour ce jour.</div><div class="editor-empty-actions"><button class="mini-btn" onclick="addEditorTask()">Ajouter la première tâche</button><button class="mini-btn" onclick="setSingleTask8h()">Créer 1 tâche de 8h</button><button class="mini-btn" onclick="setSingleAbsence(\'C\')">Congé 8h</button><button class="mini-btn" onclick="setSingleAbsence(\'V\')">Vacances 8h</button></div>';
     setTimeout(function(){restoreEditorScrollState(editorScroll);},0);
     return;
   }
-  var html=suggestionsHtml+'<div class="editor-sheet"><div class="editor-row-header"><div>Type de tâche</div><div>Heures</div><div>N° devis</div><div>Description devis</div><div>LOT</div><div>Couleur</div><div title="Ajouter une tâche">+</div><div title="Supprimer la tâche">×</div></div>';
+  // Les "Tâches proposées" sont remplacées par le menu déroulant Chantier (table de référence)
+  // directement dans la colonne N° devis — même principe que le pointage : plus de saisie libre du numéro.
+  var html='<div class="editor-sheet"><div class="editor-row-header"><div>Type de tâche</div><div>Heures</div><div>N° devis</div><div>Description devis</div><div>LOT</div><div>Couleur</div><div title="Ajouter une tâche">+</div><div title="Supprimer la tâche">×</div></div>';
   html+=editorTasks.map(function(t,i){
     var noC=NOCH[t.type];
+    // Menu déroulant Chantier : la table CHANTIERS + l'éventuel numéro hors liste de la tâche existante
+    var curNum=String(t.num||'').trim();
+    var inTable=CHANTIERS.some(function(c){return c.num===curNum;});
+    var chOpts='<option value="">— Chantier —</option>';
+    if(curNum && !inTable) chOpts+='<option value="__keep__" selected>'+escAttr(curNum+(t.nom?' — '+t.nom:'')+' (hors liste)')+'</option>';
+    chOpts+=CHANTIERS.map(function(c,cidx){return '<option value="'+cidx+'" '+(c.num===curNum?'selected':'')+'>'+escAttr(chantierTableLabel(c))+'</option>';}).join('');
     return '<div class="editor-row">'
       +'<div><select onchange="changeEditorType('+i+',this.value)">'+eligibleEditorTypes().map(function(tp){return '<option value="'+tp.id+'" '+(tp.id===t.type?'selected':'')+'>'+tp.lbl+'</option>';}).join('')+'</select></div>'
       +'<div class="editor-hours-inline"><input type="number" step="0.25" min="0.25" value="'+t.h+'" onchange="setEditorHours('+i+',this.value)"/></div>'
-      +'<div><input placeholder="N° devis" '+(noC?'disabled':'')+' value="'+escAttr(t.num||'')+'" oninput="setEditorField('+i+',\'num\',this.value)"/></div>'
+      +'<div><select '+(noC?'disabled':'')+' onchange="applyEditorChantier('+i+',this.value)">'+chOpts+'</select></div>'
       +'<div><input placeholder="Description devis" '+(noC?'disabled':'')+' value="'+escAttr(t.nom||'')+'" oninput="setEditorField('+i+',\'nom\',this.value)"/></div>'
       +'<div><input placeholder="LOT" '+(noC?'disabled':'')+' value="'+escAttr(t.mbl||'')+'" oninput="setEditorField('+i+',\'mbl\',this.value)"/></div>'
       +'<div>'+(noC?'<div class="editor-muted">—</div>':officeColorPickerHtml(i,t))+'</div>'
@@ -2079,6 +2086,15 @@ function renderEditor(){
   html+='</div>';
   list.innerHTML=html;
   setTimeout(function(){restoreEditorScrollState(editorScroll);},0);
+}
+// Sélection d'un chantier de la table dans l'éditeur : remplit N° + Description.
+function applyEditorChantier(i,val){
+  var t=editorTasks[i]; if(!t) return;
+  if(val==='__keep__') return; // numéro hors liste conservé tel quel
+  if(val===''){ t.num=''; t.nom=''; renderEditor(); return; }
+  var c=CHANTIERS[parseInt(val,10)]; if(!c) return;
+  t.num=c.num||''; t.nom=c.nom||'';
+  renderEditor();
 }
 function addEditorTask(arg){
   var insertAfter=(typeof arg==='number')?arg:null;
@@ -2190,6 +2206,14 @@ function pointageDetailHtml(pid){
     syncPointageDay(pid,di,true);
     var day=getPointageDay(pid,di), rows='', count=0;
     var hiddenCount=0;
+    // Types d'activité (section) éligibles au contexte, pour le menu déroulant de chaque ligne
+    function typeSelectHtml(curType,onchangeAttr){
+      var opts=(isBureauContext()
+        ? TYPES.filter(function(t){return BUREAU_TYPES[t.id];})
+        : TYPES.filter(function(t){return PRODUCTION_TYPES[t.id];}))
+        .map(function(tp){return '<option value="'+tp.id+'" '+(tp.id===curType?'selected':'')+'>'+tp.lbl+'</option>';}).join('');
+      return '<select class="pt-type" onchange="'+onchangeAttr+'" title="Section / activité">'+opts+'</select>';
+    }
 
     (day.items||[]).forEach(function(it,idx){
       if(it.hidden){hiddenCount++; return;}
@@ -2203,6 +2227,7 @@ function pointageDetailHtml(pid){
         +'<div class="pt-info">'
         +'<div class="pt-topline">'+label+'</div>'
         +'<div class="pt-fields">'
+        +typeSelectHtml(it.type,"setPointageItemField('"+pid+"',"+di+","+idx+",false,'type',this.value)")
         +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',false,\'mbl\',this.value)"/>'
         +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',false,\'remarque\',this.value)"/>'
         +'</div>'
@@ -2223,6 +2248,7 @@ function pointageDetailHtml(pid){
           +'<div class="pt-info">'
           +'<div class="pt-topline"><b>'+escAttr(it.num)+(it.nom?' '+escAttr(it.nom):'')+'</b></div>'
           +'<div class="pt-fields">'
+          +typeSelectHtml(it.type||defaultTypeForPerson(pid),"setPointageItemField('"+pid+"',"+di+","+idx+",true,'type',this.value)")
           +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
           +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
           +'</div>'
@@ -2243,6 +2269,7 @@ function pointageDetailHtml(pid){
           +'<div class="extra-preset" style="flex:1"><select style="width:100%" onchange="applyChantierTableOption(\''+pid+'\','+di+','+idx+',this.value)"><option value="">— Choisir un chantier dans la liste —</option>'+chOptions+'</select></div>'
           +'</div>'
           +'<div class="pt-fields">'
+          +typeSelectHtml(it.type||defaultTypeForPerson(pid),"setPointageItemField('"+pid+"',"+di+","+idx+",true,'type',this.value)")
           +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
           +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
           +'</div>'
@@ -2287,7 +2314,7 @@ function forceRenderPointage(){
     if(el){focusedExtraField=savedFocus; el.focus();}
   }
 }
-function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({lineId:allocLineId(),num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({lineId:allocLineId(),type:defaultTypeForPerson(pid),num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function setPointageItemField(pid,di,idx,isExtra,field,value){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
@@ -2295,7 +2322,8 @@ function setPointageItemField(pid,di,idx,isExtra,field,value){
   if(field==='remarque') value=String(value||'').slice(0,25);
   else value=String(value||'').trim();
   arr[idx][field]=value; day.pointed=true;
-  savePointageDay(pid,di,day,(field==='mbl'?'LOT':'Remarque')+' : '+pinfo(pid).nom+' — '+DAYS[di],before,day);
+  savePointageDay(pid,di,day,(field==='mbl'?'LOT':(field==='type'?'Section':'Remarque'))+' : '+pinfo(pid).nom+' — '+DAYS[di],before,day);
+  if(field==='type') renderPointage();
 }
 function hidePlannedItem(pid,di,idx){
   var day=getPointageDay(pid,di); if(!day.items||!day.items[idx]) return;
@@ -2351,7 +2379,8 @@ function dashboardAggregate(){
     if(!persons[pid]) persons[pid]={
       week:0,month:0,year:0,work:0,abs:0,conges:0,m12:{},
       weekProd:0,monthProd:0,yearProd:0,workProd:0,
-      weekBE:0,monthBE:0,yearBE:0,workBE:0
+      weekBE:0,monthBE:0,yearBE:0,workBE:0,
+      byType:{}  // ventilation des heures travaillées par section/activité (M, A, F, T, P, G, D, PL, E, GS, R, CNC)
     };
     return persons[pid];
   }
@@ -2399,7 +2428,8 @@ function dashboardAggregate(){
               if(inThisWeek)P.week+=h; if(inThisMonth)P.month+=h; if(inThisYear)P.year+=h;
               if(typ==='V'||typ==='C') P.conges+=h;
               else if(typ==='CE'||typ==='ML') P.abs+=h;
-              else { P.work+=h; if(scope==='prod') P.workProd+=h; else P.workBE+=h; }
+              else { P.work+=h; if(scope==='prod') P.workProd+=h; else P.workBE+=h;
+                     if(inThisYear){var tk=typ||'?'; P.byType[tk]=(P.byType[tk]||0)+h;} }
               P.m12[ym]=(P.m12[ym]||0)+h;
             } else {
               // On garde quand même les détails Prod/BE séparés pour info
@@ -2483,6 +2513,7 @@ function toggleChantierBlock(id){
   if(ar) ar.textContent=open?'▸':'▾';
 }
 function setDashFilter(f){dashFilter=f; renderDashboard();}
+function togglePersonDetail(safePid){var el=document.getElementById('pdetail-'+safePid); if(el) el.style.display=(el.style.display==='none')?'':'none';}
 function renderDashboard(){
   var el=document.getElementById('tab-dashboard'); if(!el) return;
   var agg=dashboardAggregate();
@@ -2511,13 +2542,24 @@ function renderDashboard(){
   var maxYear=1; pers.forEach(function(p){var d=agg.persons[p.id]; if(d&&d.year>maxYear)maxYear=d.year;});
   html+='<div class="dash-box"><h3>👥 Par personne · '+filterLbl+'</h3><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Personne</th><th>Semaine</th><th>Mois</th><th>Année</th><th>Heures prestées</th><th>Absences</th><th>Congés &amp; vacances</th><th>Charge année</th></tr></thead><tbody>';
   pers.forEach(function(p){
-    var d=agg.persons[p.id]||{week:0,month:0,year:0,work:0,abs:0,conges:0};
-    html+='<tr><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+'</td>'
+    var d=agg.persons[p.id]||{week:0,month:0,year:0,work:0,abs:0,conges:0,byType:{}};
+    var safePid=p.id.replace(/[^a-zA-Z0-9_-]/g,'_');
+    html+='<tr class="dash-person-row" style="cursor:pointer" onclick="togglePersonDetail(\''+safePid+'\')" title="Cliquer pour la ventilation par section"><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+' <span style="color:#94a3b8;font-size:10px">▾</span></td>'
       +'<td>'+fmtH(d.week)+'</td><td>'+fmtH(d.month)+'</td><td><b>'+fmtH(d.year)+'</b></td>'
       +'<td style="color:#16a34a">'+fmtH(d.work)+'</td>'
       +'<td style="color:#b91c1c">'+fmtH(d.abs)+'</td>'
       +'<td style="color:#b45309">'+fmtH(d.conges)+'</td>'
       +'<td>'+dashBar(d.year,maxYear,tcol(p.g))+'</td></tr>';
+    // Sous-ligne : ventilation des heures travaillées par section/activité (année en cours, selon filtre)
+    var bt=d.byType||{};
+    var typeOrder=['M','A','F','T','P','G','D','PL','E','GS','R','CNC'];
+    var chips=typeOrder.filter(function(tk){return bt[tk]>0;}).map(function(tk){
+      var ti=tinfo(tk);
+      return '<span style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700"><span style="width:8px;height:8px;border-radius:50%;background:'+(ti.col||'#94a3b8')+'"></span>'+ti.lbl+' · '+fmtHShort(bt[tk])+'</span>';
+    }).join(' ');
+    html+='<tr class="dash-person-detail" id="pdetail-'+safePid+'" style="display:none"><td colspan="8" style="background:#f8fafc;padding:8px 14px">'
+      +(chips?('<span style="font-size:11px;color:#64748b;margin-right:8px">Ventilation par section (année) :</span>'+chips):'<span style="font-size:11px;color:#94a3b8">Aucune heure travaillée sur la période.</span>')
+      +'</td></tr>';
   });
   html+='</tbody></table></div></div>';
 
@@ -2768,11 +2810,11 @@ function renderExport(){
   +'<div class="ex-card" style="padding:16px"><h3 style="font-size:14px;color:var(--bleu);margin-bottom:6px">📊 Export CSV</h3><p style="font-size:12px;color:#64748b;margin-bottom:10px">Exporte les heures pointées.</p><button class="main-btn" onclick="doExportCSV()">Télécharger le CSV</button></div>'
   +'<div class="ex-card" style="padding:16px"><h3 style="font-size:14px;color:var(--bleu);margin-bottom:6px">🖨 Imprimer</h3><p style="font-size:12px;color:#64748b;margin-bottom:10px">Impression / PDF en couleur avec une mise en page proche de l’écran.</p><button class="main-btn" onclick="doPrint()">Imprimer / PDF</button></div>';
 }
-function doSaveJSON(){var data={version:8,savedAt:new Date().toISOString(),planning:planning,pointage:pointage,cColorOverride:cColorOverride,people:PERS,personPins:personPins,chefUsers:chefUsers,meta:appMeta}; var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='planning_verbruggen_S'+isoWeek(wkMon)+'_'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('Sauvegarde téléchargée');}
-function doLoadJSON(input){var file=input.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(ev){try{var d=JSON.parse(ev.target.result); if(d.planning) planning=d.planning; if(d.pointage) pointage=d.pointage; if(d.extraPointage) legacyExtraPointage=d.extraPointage; if(d.cColorOverride) cColorOverride=d.cColorOverride; if(d.people) PERS=d.people; if(d.personPins) personPins=d.personPins; if(d.chefUsers) chefUsers=d.chefUsers; else if(d.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(d.chefPin)||DEFAULT_CHEF_PIN}]; if(d.meta) appMeta=ensureMeta(d.meta); migrateState(); lsSave(); fbSave(); renderCurrentTab(); updateStatusBar(); toast('Sauvegarde chargée');}catch(e){toast('Fichier invalide');}}; r.readAsText(file); input.value='';}
+function doSaveJSON(){var data={version:9,savedAt:new Date().toISOString(),planning:planning,pointage:pointage,planningBureau:planningBureau,pointageBureau:pointageBureau,cColorOverride:cColorOverride,people:PERS,personPins:personPins,chefUsers:chefUsers,chantiers:CHANTIERS,meta:appMeta,nextLineId:nextLineId}; var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='planning_verbruggen_S'+isoWeek(wkMon)+'_'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('Sauvegarde téléchargée');}
+function doLoadJSON(input){var file=input.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(ev){try{var d=JSON.parse(ev.target.result); if(d.planning) planning=d.planning; if(d.pointage) pointage=d.pointage; if(d.planningBureau) planningBureau=d.planningBureau; if(d.pointageBureau) pointageBureau=d.pointageBureau; if(d.extraPointage) legacyExtraPointage=d.extraPointage; if(d.cColorOverride) cColorOverride=d.cColorOverride; if(d.people) PERS=d.people; if(d.personPins) personPins=d.personPins; if(d.chefUsers) chefUsers=d.chefUsers; else if(d.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(d.chefPin)||DEFAULT_CHEF_PIN}]; if(d.chantiers) CHANTIERS=normalizeChantiersList(d.chantiers); if(d.nextLineId) nextLineId=d.nextLineId; if(d.meta) appMeta=ensureMeta(d.meta); migrateState(); lsSave(); fbSave(); renderCurrentTab(); updateStatusBar(); toast('Sauvegarde chargée');}catch(e){toast('Fichier invalide');}}; r.readAsText(file); input.value='';}
 function doExportCSV(){
   var rows=[['Semaine','Personne','Jour','Date','Type','N Chantier','Client','LOT','Heures prévues','Heures pointées','Nature']];
-  PERS.forEach(function(p){for(var di=0;di<6;di++){syncPointageDay(p.id,di,true); var day=getPointageDay(p.id,di); (day.items||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type,it.num||'',it.nom||'',it.mbl||'',roundQuarter(it.plannedH||0),roundQuarter(it.h||0),'planning']);}); (day.extras||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),'',it.num||'',it.nom||'',it.mbl||'',0,roundQuarter(it.h||0),'imprévu']);}); }});
+  PERS.forEach(function(p){for(var di=0;di<6;di++){syncPointageDay(p.id,di,true); var day=getPointageDay(p.id,di); (day.items||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type,it.num||'',it.nom||'',it.mbl||'',roundQuarter(it.plannedH||0),roundQuarter(it.h||0),'planning']);}); (day.extras||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type||'',it.num||'',it.nom||'',it.mbl||'',0,roundQuarter(it.h||0),'imprévu']);}); }});
   var csv=rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(';');}).join('\r\n');
   var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='pointage_S'+isoWeek(wkMon)+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('CSV téléchargé');
 }
@@ -2805,6 +2847,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260821-1430</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260828-0900</span></div>
 </body>
 </html>
