@@ -532,7 +532,7 @@ function initFirebase(){
     fbAuth=firebase.auth();
     // Restore session if user previously logged in via Firebase Auth
     fbAuth.onAuthStateChanged(function(user){
-      if(user){
+      if(user && !user.isAnonymous){
         bureauUser=user;
         ensureBureauRole(user).then(function(r){
           if(r){
@@ -554,6 +554,13 @@ function initFirebase(){
         });
       } else {
         bureauUser=null;
+        // SÉCURITÉ : session anonyme automatique pour satisfaire les Security Rules
+        // Firebase (".read"/".write": "auth != null") sans exposer l'interface —
+        // le login PIN ou e-mail reste requis pour entrer dans l'application.
+        // Nécessite d'activer « Anonyme » dans Firebase Console > Authentication.
+        if(!user){
+          try{ fbAuth.signInAnonymously().catch(function(){}); }catch(e){}
+        }
       }
     });
     db.ref('.info/connected').on('value', function(snap){
@@ -800,7 +807,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260831-0930";
+var APP_VERSION="V1 260831-1030";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2870,6 +2877,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260831-0930</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260831-1030</span></div>
 </body>
 </html>

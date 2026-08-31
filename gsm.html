@@ -452,7 +452,7 @@ function initFirebase(){
     db=firebase.database();
     fbAuth=firebase.auth();
     fbAuth.onAuthStateChanged(function(user){
-      if(user){
+      if(user && !user.isAnonymous){
         bureauUser=user;
         ensureBureauRole(user).then(function(r){
           if(r){
@@ -474,6 +474,11 @@ function initFirebase(){
         });
       } else {
         bureauUser=null;
+        // SÉCURITÉ : session anonyme automatique — satisfait les règles auth != null,
+        // le login PIN/e-mail reste requis pour l'interface.
+        if(!user){
+          try{ fbAuth.signInAnonymously().catch(function(){}); }catch(e){}
+        }
       }
     });
     db.ref('.info/connected').on('value', function(snap){
