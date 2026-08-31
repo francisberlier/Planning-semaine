@@ -800,7 +800,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260828-0900";
+var APP_VERSION="V1 260828-0930";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2380,7 +2380,8 @@ function dashboardAggregate(){
       week:0,month:0,year:0,work:0,abs:0,conges:0,m12:{},
       weekProd:0,monthProd:0,yearProd:0,workProd:0,
       weekBE:0,monthBE:0,yearBE:0,workBE:0,
-      byType:{}  // ventilation des heures travaillées par section/activité (M, A, F, T, P, G, D, PL, E, GS, R, CNC)
+      byType:{},       // ventilation des heures travaillées par section (année)
+      byTypeMonth:{}   // ventilation par section ET par mois : {'YYYY-MM': {M: h, A: h, ...}}
     };
     return persons[pid];
   }
@@ -2429,7 +2430,10 @@ function dashboardAggregate(){
               if(typ==='V'||typ==='C') P.conges+=h;
               else if(typ==='CE'||typ==='ML') P.abs+=h;
               else { P.work+=h; if(scope==='prod') P.workProd+=h; else P.workBE+=h;
-                     if(inThisYear){var tk=typ||'?'; P.byType[tk]=(P.byType[tk]||0)+h;} }
+                     var tk=typ||'?';
+                     if(inThisYear){ P.byType[tk]=(P.byType[tk]||0)+h; }
+                     if(!P.byTypeMonth[ym]) P.byTypeMonth[ym]={};
+                     P.byTypeMonth[ym][tk]=(P.byTypeMonth[ym][tk]||0)+h; }
               P.m12[ym]=(P.m12[ym]||0)+h;
             } else {
               // On garde quand même les détails Prod/BE séparés pour info
@@ -2550,15 +2554,31 @@ function renderDashboard(){
       +'<td style="color:#b91c1c">'+fmtH(d.abs)+'</td>'
       +'<td style="color:#b45309">'+fmtH(d.conges)+'</td>'
       +'<td>'+dashBar(d.year,maxYear,tcol(p.g))+'</td></tr>';
-    // Sous-ligne : ventilation des heures travaillées par section/activité (année en cours, selon filtre)
+    // Sous-ligne : ventilation des heures travaillées par section/activité (année + détail par mois)
     var bt=d.byType||{};
     var typeOrder=['M','A','F','T','P','G','D','PL','E','GS','R','CNC'];
-    var chips=typeOrder.filter(function(tk){return bt[tk]>0;}).map(function(tk){
+    var activeTypes=typeOrder.filter(function(tk){return bt[tk]>0;});
+    var chips=activeTypes.map(function(tk){
       var ti=tinfo(tk);
       return '<span style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700"><span style="width:8px;height:8px;border-radius:50%;background:'+(ti.col||'#94a3b8')+'"></span>'+ti.lbl+' · '+fmtHShort(bt[tk])+'</span>';
     }).join(' ');
+    // Tableau ventilation par mois (12 derniers mois, colonnes = sections actives sur la période)
+    var btm=d.byTypeMonth||{};
+    var monthTypes=typeOrder.filter(function(tk){return (agg.months||[]).some(function(mo){return btm[mo.key]&&btm[mo.key][tk]>0;});});
+    var monthTable='';
+    if(monthTypes.length){
+      monthTable='<div style="margin-top:8px;overflow-x:auto"><table style="border-collapse:collapse;font-size:10.5px"><thead><tr><th style="text-align:left;padding:2px 8px;color:#64748b;font-weight:700">Mois</th>';
+      monthTypes.forEach(function(tk){var ti=tinfo(tk); monthTable+='<th style="padding:2px 8px;color:'+(ti.col||'#64748b')+';font-weight:800">'+ti.lbl+'</th>';});
+      monthTable+='<th style="padding:2px 8px;color:#1a2d5a;font-weight:800">Total</th></tr></thead><tbody>';
+      (agg.months||[]).forEach(function(mo){
+        var rowTot=0, cells='';
+        monthTypes.forEach(function(tk){var v=(btm[mo.key]&&btm[mo.key][tk])||0; rowTot+=v; cells+='<td style="padding:2px 8px;text-align:right;border-top:1px solid #eef2f7">'+(v?fmtHShort(v):'·')+'</td>';});
+        if(rowTot>0) monthTable+='<tr><td style="padding:2px 8px;border-top:1px solid #eef2f7;font-weight:700;color:#334155">'+mo.lbl+'</td>'+cells+'<td style="padding:2px 8px;text-align:right;border-top:1px solid #eef2f7;font-weight:800">'+fmtHShort(rowTot)+'</td></tr>';
+      });
+      monthTable+='</tbody></table></div>';
+    }
     html+='<tr class="dash-person-detail" id="pdetail-'+safePid+'" style="display:none"><td colspan="8" style="background:#f8fafc;padding:8px 14px">'
-      +(chips?('<span style="font-size:11px;color:#64748b;margin-right:8px">Ventilation par section (année) :</span>'+chips):'<span style="font-size:11px;color:#94a3b8">Aucune heure travaillée sur la période.</span>')
+      +(chips?('<span style="font-size:11px;color:#64748b;margin-right:8px">Ventilation par section (année) :</span>'+chips+monthTable):'<span style="font-size:11px;color:#94a3b8">Aucune heure travaillée sur la période.</span>')
       +'</td></tr>';
   });
   html+='</tbody></table></div></div>';
@@ -2847,6 +2867,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260828-0900</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260828-0930</span></div>
 </body>
 </html>
