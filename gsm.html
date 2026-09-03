@@ -129,6 +129,7 @@ input,select{font-size:14px}
 .pt-row.has-rm{grid-template-columns:minmax(0,1fr) auto auto}
 .pt-topline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:0}
 .pt-type{padding:7px 8px;border:1px solid var(--bd);border-radius:8px;font-size:12px;font-weight:600;background:#f8fafc;max-width:140px}
+.pt-lot-wrap select,.pt-lot-wrap input{padding:7px 8px;border:1px solid var(--bd);border-radius:8px;font-size:12px;max-width:140px}
 .hctrl{display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--bd);border-radius:12px;padding:4px}
 .hctrl button{width:30px;height:30px;border-radius:8px;border:1px solid var(--bd);background:#fff;font-size:16px;font-weight:900}
 .hval{min-width:62px;text-align:center;font-size:15px;font-weight:800;color:var(--bleu)}
@@ -805,12 +806,41 @@ function normalizeChantiersList(v){
     if(!num && !nom) return;
     var key=num.toLowerCase()+'|'+nom.toLowerCase();
     if(seen[key]) return; seen[key]=1;
-    out.push({num:num, nom:nom});
+    var entry={num:num, nom:nom};
+    if(c.added) entry.added=c.added;
+    var rawLots=Array.isArray(c.lots)?c.lots:(c.lots?Object.keys(c.lots).map(function(k){return c.lots[k];}):[]);
+    var lots=[], lseen={};
+    rawLots.forEach(function(l){
+      l=String(l||'').trim().slice(0,12);
+      if(!l) return; var lk=l.toLowerCase();
+      if(lseen[lk]) return; lseen[lk]=1;
+      lots.push(l);
+    });
+    if(lots.length) entry.lots=lots;
+    out.push(entry);
   });
   out.sort(function(a,b){return (b.num||'').localeCompare(a.num||'','fr',{numeric:true,sensitivity:'base'});});
   return out;
 }
 function chantierTableLabel(c){var parts=[]; if(c.num) parts.push(c.num); if(c.nom) parts.push(c.nom); return parts.join(' — ')||'Chantier';}
+function chantierLots(num){
+  num=String(num||'').trim(); if(!num) return [];
+  var c=CHANTIERS.find(function(x){return x.num===num;});
+  return (c&&Array.isArray(c.lots))?c.lots:[];
+}
+function lotFieldHtml(obj,disabled,onchangeAttr){
+  if(disabled) return '<input placeholder="LOT" disabled value=""/>';
+  var lots=chantierLots(obj.num);
+  var cur=String(obj.mbl||'').trim();
+  if(!lots.length){
+    return '<input placeholder="LOT" maxlength="40" value="'+escAttr(obj.mbl||'')+'" onchange="'+onchangeAttr+'"/>';
+  }
+  var opts='<option value="">— LOT —</option>';
+  var inList=lots.some(function(l){return l===cur;});
+  if(cur && !inList) opts+='<option value="'+escAttr(cur)+'" selected>'+escAttr(cur)+' (hors liste)</option>';
+  opts+=lots.map(function(l){return '<option value="'+escAttr(l)+'" '+(l===cur?'selected':'')+'>'+escAttr(l)+'</option>';}).join('');
+  return '<select onchange="'+onchangeAttr+'" title="LOT (défini dans la table des chantiers)">'+opts+'</select>';
+}
 function applyChantierTableOption(pid,di,idx,val){
   var day=getPointageDay(pid,di); if(!day.extras[idx]) return;
   var c=CHANTIERS[parseInt(val,10)]; if(!c) return;
@@ -1646,7 +1676,7 @@ function renderEditor(){
       +'<div class="editor-hours-inline"><input type="number" step="0.25" min="0.25" value="'+t.h+'" onchange="setEditorHours('+i+',this.value)"/></div>'
       +(function(){var curNum=String(t.num||'').trim();var inTable=CHANTIERS.some(function(c){return c.num===curNum;});var chOpts='<option value="">— Chantier —</option>';if(curNum && !inTable) chOpts+='<option value="__keep__" selected>'+escAttr(curNum+(t.nom?' — '+t.nom:'')+' (hors liste)')+'</option>';chOpts+=CHANTIERS.map(function(c,cidx){return '<option value="'+cidx+'" '+(c.num===curNum?'selected':'')+'>'+escAttr(chantierTableLabel(c))+'</option>';}).join('');return '<div><select '+(noC?'disabled':'')+' onchange="applyEditorChantier('+i+',this.value)">'+chOpts+'</select></div>';})()
       +'<div><input placeholder="Description devis" '+(noC?'disabled':'')+' value="'+escAttr(t.nom||'')+'" oninput="setEditorField('+i+',\'nom\',this.value)"/></div>'
-      +'<div><input placeholder="LOT" '+(noC?'disabled':'')+' value="'+escAttr(t.mbl||'')+'" oninput="setEditorField('+i+',\'mbl\',this.value)"/></div>'
+      +'<div>'+lotFieldHtml(t,noC,"setEditorField("+i+",'mbl',this.value)")+'</div>'
       +'<div>'+(noC?'<div class="editor-muted">—</div>':officeColorPickerHtml(i,t))+'</div>'
       +'<button class="row-action add" onclick="addEditorTask('+i+')" title="Ajouter une tâche">+</button>'
       +'<button class="row-action del" onclick="removeEditorTask('+i+')" title="Supprimer cette tâche">×</button>'
@@ -1786,7 +1816,7 @@ function pointageDetailHtml(pid){
         +'<div class="pt-info"><div class="pt-topline">'+label+'</div>'
         +'<div class="pt-fields">'
         +typeSelectHtml(it.type,"setPointageItemField('"+pid+"',"+di+","+idx+",false,'type',this.value)")
-        +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',false,\'mbl\',this.value)"/>'
+        +'<span class="pt-lot-wrap">'+lotFieldHtml(it,false,"setPointageItemField('"+pid+"',"+di+","+idx+",false,'mbl',this.value)")+'</span>'
         +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',false,\'remarque\',this.value)"/>'
         +'</div></div>'
         +'<div class="hctrl"><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',false,-0.25)">−</button><button class="hval-btn" onclick="openHoursPad(\''+pid+'\','+di+','+idx+',false)">'+fmtHShort(it.h)+'</button><button onclick="adjustPointage(\''+pid+'\','+di+','+idx+',false,0.25)">+</button></div>'
@@ -1812,7 +1842,7 @@ function pointageDetailHtml(pid){
         +'</div>'
         +'<div class="pt-fields">'
         +typeSelectHtml(it.type||defaultTypeForPerson(pid),"setPointageItemField('"+pid+"',"+di+","+idx+",true,'type',this.value)")
-        +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
+        +'<span class="pt-lot-wrap">'+lotFieldHtml(it,false,"setPointageItemField('"+pid+"',"+di+","+idx+",true,'mbl',this.value)")+'</span>'
         +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
         +'</div>'
         +emptyMsg+'</div>'

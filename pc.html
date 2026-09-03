@@ -95,6 +95,7 @@ input,select{font-size:14px}
 .daycell-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:10px;color:#64748b;font-weight:700}
 .day-total{padding:2px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:800}
 .pt-type{padding:6px 8px;border:1px solid var(--bd);border-radius:8px;font-size:12px;font-weight:600;background:#f8fafc;max-width:150px}
+.pt-lot-wrap select,.pt-lot-wrap input{padding:6px 8px;border:1px solid var(--bd);border-radius:8px;font-size:12px;max-width:150px}
 .day-total.warn{background:#fff7ed;color:#c2410c}
 .day-total.ok{background:#dcfce7;color:#166534}
 .day-total.abs{background:#fdf4ff;color:#a21caf}
@@ -807,7 +808,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260831-1030";
+var APP_VERSION="V1 260901-0900";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -829,7 +830,7 @@ function currentDisplayName(){
 function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.colorIdx==null?'':t.colorIdx].join('|');}
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));var lid=(t.lineId!=null&&!isNaN(parseInt(t.lineId,10)))?parseInt(t.lineId,10):allocLineId(); noteLineId(lid);return {id:t.id||uid(),lineId:lid,type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
-function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
+function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
 // Cherche la couleur d'un chantier connu dans tout l'historique du planning (production + bureau).
 // Retourne {bg, brd, fg} ou null si le chantier est inconnu.
 function chantierKnownColor(num){
@@ -901,22 +902,63 @@ function normalizeChantiersList(v){
     if(seen[key]) return; seen[key]=1;
     var entry={num:num, nom:nom};
     if(c.added) entry.added=c.added;
+    // LOTs du chantier : liste de libellés courts (12 car. max), dédupliqués
+    var rawLots=Array.isArray(c.lots)?c.lots:(c.lots?Object.keys(c.lots).map(function(k){return c.lots[k];}):[]);
+    var lots=[], lseen={};
+    rawLots.forEach(function(l){
+      l=String(l||'').trim().slice(0,12);
+      if(!l) return; var lk=l.toLowerCase();
+      if(lseen[lk]) return; lseen[lk]=1;
+      lots.push(l);
+    });
+    if(lots.length) entry.lots=lots;
     out.push(entry);
   });
   out.sort(function(a,b){return (b.num||'').localeCompare(a.num||'','fr',{numeric:true,sensitivity:'base'});});
   return out;
 }
 function chantierTableLabel(c){var parts=[]; if(c.num) parts.push(c.num); if(c.nom) parts.push(c.nom); return parts.join(' — ')||'Chantier';}
-function addChantierToTable(num,nom){
+// LOTs d'un chantier de la table (tableau de libellés courts) — [] si aucun.
+function chantierLots(num){
+  num=String(num||'').trim(); if(!num) return [];
+  var c=CHANTIERS.find(function(x){return x.num===num;});
+  return (c&&Array.isArray(c.lots))?c.lots:[];
+}
+function parseLotsString(s){
+  return String(s||'').split(',').map(function(l){return l.trim().slice(0,12);}).filter(function(l){return l;});
+}
+function addLotToChantier(num,lot){
+  lot=String(lot||'').trim().slice(0,12);
+  if(!lot){ toast('LOT vide'); return; }
+  var c=CHANTIERS.find(function(x){return x.num===num;}); if(!c) return;
+  if(!Array.isArray(c.lots)) c.lots=[];
+  if(c.lots.some(function(l){return l.toLowerCase()===lot.toLowerCase();})){ toast('Le LOT « '+lot+' » existe déjà sur ce chantier'); return; }
+  c.lots.push(lot);
+  lsSave(); fbSave(); updateStatusBar();
+  toast('✓ LOT « '+lot+' » ajouté au chantier '+num);
+  if(currentTab==='chantiers') renderChantiers();
+}
+function removeLotFromChantier(num,lot){
+  var c=CHANTIERS.find(function(x){return x.num===num;}); if(!c||!Array.isArray(c.lots)) return;
+  c.lots=c.lots.filter(function(l){return l!==lot;});
+  if(!c.lots.length) delete c.lots;
+  lsSave(); fbSave(); updateStatusBar();
+  toast('LOT « '+lot+' » retiré du chantier '+num+' (les tâches déjà encodées ne changent pas)');
+  if(currentTab==='chantiers') renderChantiers();
+}
+function addChantierToTable(num,nom,lotsStr){
   num=String(num||'').trim(); nom=String(nom||'').trim();
   if(!num){ toast('Le N° de chantier est obligatoire'); return false; }
   for(var i=0;i<CHANTIERS.length;i++){
     if(CHANTIERS[i].num.toLowerCase()===num.toLowerCase()){ toast('Le chantier '+num+' existe déjà ('+chantierTableLabel(CHANTIERS[i])+')'); return false; }
   }
-  CHANTIERS.push({num:num, nom:nom, added:Date.now()});
+  var entry={num:num, nom:nom, added:Date.now()};
+  var lots=parseLotsString(lotsStr);
+  if(lots.length) entry.lots=lots;
+  CHANTIERS.push(entry);
   CHANTIERS=normalizeChantiersList(CHANTIERS);
   lsSave(); fbSave(); updateStatusBar();
-  toast('✓ Chantier '+num+(nom?' — '+nom:'')+' ajouté');
+  toast('✓ Chantier '+num+(nom?' — '+nom:'')+' ajouté'+(lots.length?' avec '+lots.length+' LOT'+(lots.length>1?'s':''):''));
   return true;
 }
 // ── Nettoyage des chantiers inactifs (aucune heure encodée depuis +3 mois) ──
@@ -1759,10 +1801,12 @@ function renderChantiers(){
   // Formulaire d'ajout
   html+='<div class="dash-box"><h3>➕ Ajouter un chantier</h3>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
-    +'<input id="new-ch-num" placeholder="N° (ex: 9234)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;width:140px;font-size:14px"/>'
-    +'<input id="new-ch-nom" placeholder="Client / libellé (ex: Notalex)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;flex:1;min-width:220px;font-size:14px"/>'
+    +'<input id="new-ch-num" placeholder="N° (ex: 9234)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;width:130px;font-size:14px"/>'
+    +'<input id="new-ch-nom" placeholder="Client / libellé (ex: Notalex)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;flex:1;min-width:200px;font-size:14px"/>'
+    +'<input id="new-ch-lots" placeholder="LOTs, séparés par des virgules (ex: 01, 02, Lockers)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;flex:1;min-width:240px;font-size:14px"/>'
     +'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 18px" onclick="submitNewChantier()">Ajouter</button>'
     +'</div>'
+    +'<div style="margin-top:6px;font-size:11px;color:#94a3b8">Chaque LOT : 12 caractères max. Les LOTs restent modifiables après création (colonne LOTs ci-dessous).</div>'
     +'<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
     +'<button class="mini-btn" style="background:#e0f2fe;border:1px solid #7dd3fc;color:#075985;font-weight:700" onclick="importChantiersFromPlanning()">⇊ Importer les chantiers du planning existant</button>'
     +'<button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700" onclick="cleanupChantiersInactifs()">🧹 Supprimer les inactifs (+3 mois)'+(inactifs.length?' — '+inactifs.length:'')+'</button>'
@@ -1773,7 +1817,7 @@ function renderChantiers(){
   if(!CHANTIERS.length){
     html+='<div class="hist-empty">Liste vide. Ajoutez un chantier ci-dessus ou importez depuis le planning.</div>';
   } else {
-    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th style="width:120px">N°</th><th>Client / libellé</th><th style="width:220px">Dernière activité</th><th style="width:110px"></th></tr></thead><tbody>';
+    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th style="width:110px">N°</th><th style="width:220px">Client / libellé</th><th>LOTs</th><th style="width:190px">Dernière activité</th><th style="width:105px"></th></tr></thead><tbody>';
     CHANTIERS.forEach(function(c){
       var lk=lastMap[c.num.toLowerCase()];
       var actLbl, actStyle='color:#64748b';
@@ -1781,7 +1825,19 @@ function renderChantiers(){
       else if(lk){ actLbl='Semaine du '+fmtD(new Date(lk),true); }
       else { actLbl='Jamais utilisé'; }
       var inactifBadge=inactifNums[c.num]?' <span style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:99px;padding:1px 8px;font-size:10px;font-weight:700">+3 mois</span>':'';
-      html+='<tr><td><b>'+escAttr(c.num)+'</b></td><td>'+escAttr(c.nom||'')+'</td><td style="'+actStyle+';font-size:12px">'+actLbl+inactifBadge+'</td><td><button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;font-weight:700" onclick="removeChantierFromTable(\''+escAttr(c.num)+'\')">🗑 Supprimer</button></td></tr>';
+      var safeNum=escAttr(c.num).replace(/'/g,"\\'");
+      // Colonne LOTs : badges supprimables + ajout inline (pas de LOTs sur les codes absence)
+      var lotsCell;
+      if(isAbsenceNum(c.num)){ lotsCell='<span style="color:#cbd5e1">—</span>'; }
+      else {
+        var lots=Array.isArray(c.lots)?c.lots:[];
+        lotsCell=lots.map(function(l){
+          var safeLot=escAttr(l).replace(/'/g,"\\'");
+          return '<span style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:700;margin:1px 3px 1px 0">'+escAttr(l)+'<a style="cursor:pointer;color:#93c5fd;font-weight:900" title="Retirer ce LOT" onclick="removeLotFromChantier(\''+safeNum+'\',\''+safeLot+'\')">×</a></span>';
+        }).join('');
+        lotsCell+='<span style="display:inline-flex;align-items:center;gap:3px;margin-left:'+(lots.length?'6px':'0')+'"><input id="lot-add-'+c.num.replace(/[^a-zA-Z0-9_-]/g,'_')+'" maxlength="12" placeholder="+ LOT" style="width:78px;padding:3px 7px;border:1px dashed var(--bd);border-radius:8px;font-size:11px" onkeydown="if(event.key===\'Enter\'){addLotToChantier(\''+safeNum+'\',this.value);}"/><button class="mini-btn" style="padding:3px 9px;font-size:11px;font-weight:800" onclick="addLotToChantier(\''+safeNum+'\',document.getElementById(\'lot-add-'+c.num.replace(/[^a-zA-Z0-9_-]/g,'_')+'\').value)">+</button></span>';
+      }
+      html+='<tr><td><b>'+escAttr(c.num)+'</b></td><td>'+escAttr(c.nom||'')+'</td><td>'+lotsCell+'</td><td style="'+actStyle+';font-size:12px">'+actLbl+inactifBadge+'</td><td><button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;font-weight:700" onclick="removeChantierFromTable(\''+safeNum+'\')">🗑 Supprimer</button></td></tr>';
     });
     html+='</tbody></table></div>';
   }
@@ -1789,9 +1845,9 @@ function renderChantiers(){
   el.innerHTML=html;
 }
 function submitNewChantier(){
-  var numEl=document.getElementById('new-ch-num'), nomEl=document.getElementById('new-ch-nom');
+  var numEl=document.getElementById('new-ch-num'), nomEl=document.getElementById('new-ch-nom'), lotsEl=document.getElementById('new-ch-lots');
   if(!numEl) return;
-  if(addChantierToTable(numEl.value, nomEl?nomEl.value:'')){
+  if(addChantierToTable(numEl.value, nomEl?nomEl.value:'', lotsEl?lotsEl.value:'')){
     renderChantiers();
     var n2=document.getElementById('new-ch-num'); if(n2) n2.focus();
   }
@@ -2086,7 +2142,7 @@ function renderEditor(){
       +'<div class="editor-hours-inline"><input type="number" step="0.25" min="0.25" value="'+t.h+'" onchange="setEditorHours('+i+',this.value)"/></div>'
       +'<div><select '+(noC?'disabled':'')+' onchange="applyEditorChantier('+i+',this.value)">'+chOpts+'</select></div>'
       +'<div><input placeholder="Description devis" '+(noC?'disabled':'')+' value="'+escAttr(t.nom||'')+'" oninput="setEditorField('+i+',\'nom\',this.value)"/></div>'
-      +'<div><input placeholder="LOT" '+(noC?'disabled':'')+' value="'+escAttr(t.mbl||'')+'" oninput="setEditorField('+i+',\'mbl\',this.value)"/></div>'
+      +'<div>'+lotFieldHtml(t,noC,"setEditorField("+i+",'mbl',this.value)")+'</div>'
       +'<div>'+(noC?'<div class="editor-muted">—</div>':officeColorPickerHtml(i,t))+'</div>'
       +'<button class="row-action add" onclick="addEditorTask('+i+')" title="Ajouter une tâche">+</button>'
       +'<button class="row-action del" onclick="removeEditorTask('+i+')" title="Supprimer cette tâche">×</button>'
@@ -2104,6 +2160,22 @@ function applyEditorChantier(i,val){
   var c=CHANTIERS[parseInt(val,10)]; if(!c) return;
   t.num=c.num||''; t.nom=c.nom||'';
   renderEditor();
+}
+// Champ LOT : menu déroulant si le chantier a des LOTs définis dans la table, sinon saisie libre.
+// obj = {num, mbl} (tâche d'éditeur ou item de pointage).
+function lotFieldHtml(obj,disabled,onchangeAttr){
+  if(disabled) return '<input placeholder="LOT" disabled value=""/>';
+  var lots=chantierLots(obj.num);
+  var cur=String(obj.mbl||'').trim();
+  if(!lots.length){
+    // Pas de LOTs définis pour ce chantier : saisie libre (comportement historique)
+    return '<input placeholder="LOT" maxlength="40" value="'+escAttr(obj.mbl||'')+'" onchange="'+onchangeAttr+'"/>';
+  }
+  var opts='<option value="">— LOT —</option>';
+  var inList=lots.some(function(l){return l===cur;});
+  if(cur && !inList) opts+='<option value="'+escAttr(cur)+'" selected>'+escAttr(cur)+' (hors liste)</option>';
+  opts+=lots.map(function(l){return '<option value="'+escAttr(l)+'" '+(l===cur?'selected':'')+'>'+escAttr(l)+'</option>';}).join('');
+  return '<select onchange="'+onchangeAttr+'" title="LOT (défini dans la table des chantiers)">'+opts+'</select>';
 }
 function addEditorTask(arg){
   var insertAfter=(typeof arg==='number')?arg:null;
@@ -2237,7 +2309,7 @@ function pointageDetailHtml(pid){
         +'<div class="pt-topline">'+label+'</div>'
         +'<div class="pt-fields">'
         +typeSelectHtml(it.type,"setPointageItemField('"+pid+"',"+di+","+idx+",false,'type',this.value)")
-        +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',false,\'mbl\',this.value)"/>'
+        +'<span class="pt-lot-wrap">'+lotFieldHtml(it,false,"setPointageItemField('"+pid+"',"+di+","+idx+",false,'mbl',this.value)")+'</span>'
         +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',false,\'remarque\',this.value)"/>'
         +'</div>'
         +'</div>'
@@ -2258,7 +2330,7 @@ function pointageDetailHtml(pid){
           +'<div class="pt-topline"><b>'+escAttr(it.num)+(it.nom?' '+escAttr(it.nom):'')+'</b></div>'
           +'<div class="pt-fields">'
           +typeSelectHtml(it.type||defaultTypeForPerson(pid),"setPointageItemField('"+pid+"',"+di+","+idx+",true,'type',this.value)")
-          +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
+          +'<span class="pt-lot-wrap">'+lotFieldHtml(it,false,"setPointageItemField('"+pid+"',"+di+","+idx+",true,'mbl',this.value)")+'</span>'
           +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
           +'</div>'
           +'</div>'
@@ -2279,7 +2351,7 @@ function pointageDetailHtml(pid){
           +'</div>'
           +'<div class="pt-fields">'
           +typeSelectHtml(it.type||defaultTypeForPerson(pid),"setPointageItemField('"+pid+"',"+di+","+idx+",true,'type',this.value)")
-          +'<input class="pt-lot" maxlength="40" placeholder="LOT" value="'+escAttr(it.mbl||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'mbl\',this.value)"/>'
+          +'<span class="pt-lot-wrap">'+lotFieldHtml(it,false,"setPointageItemField('"+pid+"',"+di+","+idx+",true,'mbl',this.value)")+'</span>'
           +'<input class="pt-remark" maxlength="25" placeholder="Remarque (25 car.)" value="'+escAttr(it.remarque||'')+'" onchange="setPointageItemField(\''+pid+'\','+di+','+idx+',true,\'remarque\',this.value)"/>'
           +'</div>'
           +emptyMsg+'</div>'
@@ -2877,6 +2949,6 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){closeDayModal(); closePinModal(); closeHist(); clearDayClipboard(true);}
 });
 </script>
-<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260831-1030</span></div>
+<div id="app-footer" style="text-align:center;font-size:11px;color:#94a3b8;padding:14px 0 20px;user-select:none">Verbruggen Planning &amp; Pointage — <span id="ver-tag">V1 260901-0900</span></div>
 </body>
 </html>
