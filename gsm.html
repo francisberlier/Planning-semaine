@@ -672,7 +672,7 @@ function paletteIdxOf(hex){return PALETTE_HEX_IDX[String(hex||'').toLowerCase()]
 function officeColorPickerHtml(i,t){
   function sw(hex){
     var idx=paletteIdxOf(hex); var c=PALETTE[idx];
-    var on=(t.colorIdx===idx)||(t.colorIdx==null&&t.num&&cColorOverride[t.num]===idx);
+    var on=(t.num&&cColorOverride[t.num]!==undefined)?(cColorOverride[t.num]===idx):(t.colorIdx===idx);
     return '<div class="color-swatch" onclick="setEditorColor('+i+','+idx+')" style="background:'+c.bg+';border-color:'+(on?c.brd:'#e2e8f0')+';box-shadow:'+(on?'0 0 0 2px '+c.brd:'none')+'">'+(on?'<span style="font-size:10px;color:'+c.fg+';font-weight:900">✓</span>':'')+'</div>';
   }
   var html='<div class="office-picker">';
@@ -741,7 +741,7 @@ function currentDisplayName(){if(bureauUser){var em=bureauUser.email||''; var nm
 function taskSignature(t){return [t.type||'',t.num||'',t.nom||'',t.mbl||'',t.colorIdx==null?'':t.colorIdx].join('|');}
 function sanitizeTask(t){t=t||{};var type=t.type||'P';var noC=NOCH[type];var h=Math.max(0,roundQuarter(t.h));return {id:t.id||uid(),type:type,num:noC?'':String(t.num||'').trim(),nom:noC?'':String(t.nom||'').trim(),mbl:noC?'':String(t.mbl||'').trim(),h:h,colorIdx:(t.colorIdx===0||t.colorIdx)?parseInt(t.colorIdx,10):((!noC&&t.num&&cColorOverride[t.num]!==undefined)?cColorOverride[t.num]:null)};}
 function taskDesc(t){if(!t) return 'vide'; if(NOCH[t.type]) return t.type+' · '+tinfo(t.type).lbl+' · '+fmtH(t.h); var arr=[t.type]; if(t.num)arr.push(t.num); if(t.nom)arr.push(t.nom); if(t.mbl)arr.push(t.mbl); arr.push(fmtH(t.h)); return arr.join(' · ');}
-function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
+function taskColor(t){if(!t) return {bg:'#fff',fg:'#334155',brd:'#cbd5e1'}; if(NOCH[t.type]) return NOCH_COLOR[t.type]; if(t.num&&cColorOverride[t.num]!==undefined) return PALETTE[cColorOverride[t.num]%PALETTE.length]; if(t.colorIdx!==undefined&&t.colorIdx!==null&&PALETTE[t.colorIdx]) return PALETTE[t.colorIdx%PALETTE.length]; return {bg:'#f8fafc',fg:tinfo(t.type).col,brd:tinfo(t.type).col};}
 function chantierKnownColor(num){
   num=String(num||'').trim(); if(!num) return null;
   if(cColorOverride[num]!==undefined) return PALETTE[cColorOverride[num]%PALETTE.length];
@@ -1699,18 +1699,18 @@ function addEditorTask(arg){
   var baseType=(typeof arg==='number'&&editorTasks[arg])?editorTasks[arg].type:defaultTypeForPerson(editDay&&editDay.pid);
   var type=(arg==='absence')?'V':baseType;
   var remain=Math.max(0.25,roundQuarter(8-editorTotal()-editorAbsence()));
-  var task=sanitizeTask({type:type,h:remain,colorIdx:(NOCH[type]?null:0)});
+  var task=sanitizeTask({type:type,h:remain,colorIdx:null});
   if(insertAfter===null||insertAfter===undefined) editorTasks.push(task);
   else editorTasks.splice(insertAfter+1,0,task);
   renderEditor();
 }
 function addSuggestedTask(idx){
   var src=editorSuggestions[idx]; if(!src) return;
-  var task=sanitizeTask({type:src.type||defaultTypeForPerson(editDay&&editDay.pid),num:src.num||'',nom:src.nom||'',mbl:src.mbl||'',h:src.h||0.25,colorIdx:(src.colorIdx===0||src.colorIdx)?src.colorIdx:0});
+  var task=sanitizeTask({type:src.type||defaultTypeForPerson(editDay&&editDay.pid),num:src.num||'',nom:src.nom||'',mbl:src.mbl||'',h:src.h||0.25,colorIdx:(src.colorIdx===0||src.colorIdx)?src.colorIdx:null});
   editorTasks.push(task);
   renderEditor();
 }
-function setSingleTask8h(){var type=defaultTypeForPerson(editDay&&editDay.pid); editorTasks=[sanitizeTask({type:type,h:8,colorIdx:(NOCH[type]?null:0)})]; renderEditor();}
+function setSingleTask8h(){var type=defaultTypeForPerson(editDay&&editDay.pid); editorTasks=[sanitizeTask({type:type,h:8,colorIdx:null})]; renderEditor();}
 function removeEditorTask(i){editorTasks.splice(i,1); renderEditor();}
 function changeEditorType(i,v){editorTasks[i].type=v; if(NOCH[v]){editorTasks[i].num=''; editorTasks[i].nom=''; editorTasks[i].mbl=''; editorTasks[i].colorIdx=null;} else if(editorTasks[i].colorIdx==null){editorTasks[i].colorIdx=0;} renderEditor();}
 function adjustEditorHours(i,delta){editorTasks[i].h=Math.max(0.25,roundQuarter((parseFloat(editorTasks[i].h)||0)+delta)); renderEditor();}
