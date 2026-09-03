@@ -808,7 +808,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260901-1000";
+var APP_VERSION="V1 260903-1815";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1791,6 +1791,15 @@ function renderCurrentTab(){
 }
 
 // ── TABLE DES CHANTIERS (référentiel) ────────────────────────
+// Sens d'affichage de la liste (le référentiel CHANTIERS lui-même reste trié en
+// décroissant par normalizeChantiersList — on ne trie ici qu'une copie d'affichage).
+var chTblDir='desc';
+try{var _cts=localStorage.getItem('vb_chtbldir_v1'); if(_cts==='asc'||_cts==='desc') chTblDir=_cts;}catch(e){}
+function toggleChTblDir(){
+  chTblDir=(chTblDir==='desc')?'asc':'desc';
+  try{localStorage.setItem('vb_chtbldir_v1',chTblDir);}catch(e){}
+  renderChantiers();
+}
 function renderChantiers(){
   var el=document.getElementById('tab-chantiers'); if(!el) return;
   var lastMap=computeChantierLastActivity();
@@ -1813,12 +1822,18 @@ function renderChantiers(){
     +'</div>'
     +'</div>';
   // Liste
-  html+='<div class="dash-box"><h3>📋 Chantiers ('+CHANTIERS.length+')</h3>';
+  var chList=CHANTIERS.slice().sort(function(a,b){
+    var r=String(a.num||'').localeCompare(String(b.num||''),'fr',{numeric:true,sensitivity:'base'});
+    return (chTblDir==='asc')?r:-r;
+  });
+  html+='<div class="dash-box"><h3 style="display:flex;align-items:center;gap:10px">📋 Chantiers ('+CHANTIERS.length+')'
+    +'<button onclick="toggleChTblDir()" style="padding:4px 12px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:8px;font-weight:600;cursor:pointer;font-size:11px" title="Inverser l\'ordre des N°">'
+    +(chTblDir==='desc'?'N° ▼ décroissant':'N° ▲ croissant')+'</button></h3>';
   if(!CHANTIERS.length){
     html+='<div class="hist-empty">Liste vide. Ajoutez un chantier ci-dessus ou importez depuis le planning.</div>';
   } else {
     html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th style="width:110px">N°</th><th style="width:220px">Client / libellé</th><th>LOTs</th><th style="width:190px">Dernière activité</th><th style="width:105px"></th></tr></thead><tbody>';
-    CHANTIERS.forEach(function(c){
+    chList.forEach(function(c){
       var lk=lastMap[c.num.toLowerCase()];
       var actLbl, actStyle='color:#64748b';
       if(isAbsenceNum(c.num)){ actLbl='Code absence'; actStyle='color:#7c3aed;font-weight:600'; }
@@ -2444,6 +2459,21 @@ function tasksFromDayObj(dayObj){
 }
 // Filtre actif pour le Dashboard : 'prod', 'bureau', ou 'all'
 var dashFilter='all';
+// Tri des tableaux « par chantier » du Dashboard :
+//   dashChSort : 'heures' (par total d'heures) ou 'num' (par N° de chantier)
+//   dashChDir  : 'desc' ou 'asc'
+// Mémorisé par navigateur — n'affecte que l'affichage, jamais les données.
+var dashChSort='heures', dashChDir='desc';
+try{
+  var _dcs=localStorage.getItem('vb_dashchsort_v1');
+  if(_dcs){ var _o=JSON.parse(_dcs);
+    if(_o&&(_o.sort==='heures'||_o.sort==='num')) dashChSort=_o.sort;
+    if(_o&&(_o.dir==='asc'||_o.dir==='desc')) dashChDir=_o.dir;
+  }
+}catch(e){}
+function saveDashChSort(){try{localStorage.setItem('vb_dashchsort_v1',JSON.stringify({sort:dashChSort,dir:dashChDir}));}catch(e){}}
+function setDashChSort(mode){ dashChSort=mode; saveDashChSort(); renderDashboard(); }
+function toggleDashChDir(){ dashChDir=(dashChDir==='desc')?'asc':'desc'; saveDashChSort(); renderDashboard(); }
 function dashboardAggregate(){
   // Renvoie {persons, chantiers, months, curYear}
   // Pour chaque entrée, on agrège séparément les heures Production et Bureau.
@@ -2685,16 +2715,33 @@ function renderDashboard(){
     if(dashFilter==='bureau') return C.totalBE>0;
     return (C.totalProd+C.totalBE)>0;
   }).sort(function(a,b){
+    // Comparaison des N° : localeCompare numérique (gère 9219_2, 10001 après 9999,
+    // et les codes absence 0005/0006/0007).
+    var cmpNum=String(a).localeCompare(String(b),'fr',{numeric:true,sensitivity:'base'});
+    if(dashChSort==='num') return (dashChDir==='asc')?cmpNum:-cmpNum;
     var A=agg.chantiers[a], B=agg.chantiers[b];
     var ta=(dashFilter==='prod')?A.totalProd:(dashFilter==='bureau')?A.totalBE:(A.totalProd+A.totalBE);
     var tb=(dashFilter==='prod')?B.totalProd:(dashFilter==='bureau')?B.totalBE:(B.totalProd+B.totalBE);
-    return tb-ta;
+    var d=tb-ta;
+    if(d===0) return cmpNum; // à égalité d'heures, on range par N° croissant
+    return (dashChDir==='asc')?-d:d;
   });
   var maxC=1; cnums.forEach(function(n){
     var C=agg.chantiers[n];
     var t=(dashFilter==='prod')?C.totalProd:(dashFilter==='bureau')?C.totalBE:(C.totalProd+C.totalBE);
     if(t>maxC) maxC=t;
   });
+  // ── BARRE DE TRI DES CHANTIERS (s'applique aux deux tableaux ci-dessous) ──
+  function chSortBtn(val,lbl){
+    var on=(dashChSort===val);
+    return '<button onclick="setDashChSort(\''+val+'\')" style="padding:6px 14px;border:1px solid '+(on?'#0e7490':'#cbd5e1')+';background:'+(on?'#0e7490':'#fff')+';color:'+(on?'#fff':'#334155')+';border-radius:8px;font-weight:'+(on?'700':'600')+';cursor:pointer;font-size:12px">'+lbl+'</button>';
+  }
+  html+='<div style="display:flex;gap:8px;padding:2px 0 12px;align-items:center;flex-wrap:wrap">'
+    +'<span style="font-size:12px;color:#64748b;font-weight:600">Tri des chantiers :</span>'
+    +chSortBtn('heures','⏱ Heures')+chSortBtn('num','🔢 N° chantier')
+    +'<button onclick="toggleDashChDir()" style="padding:6px 14px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:8px;font-weight:600;cursor:pointer;font-size:12px">'
+    +(dashChDir==='desc'?'▼ Décroissant':'▲ Croissant')+'</button></div>';
+
   html+='<div class="dash-box"><h3>🏗 Par chantier · totaux</h3>';
   if(!cnums.length) html+='<div class="hist-empty">Aucune heure de chantier enregistrée.</div>';
   else{
@@ -2938,7 +2985,18 @@ function doPrint(){
 // ── INIT ─────────────────────────────────────────────────────
 lsLoad();
 migrateState();
-(function(){var hv=document.getElementById('hdr-version'); if(hv) hv.textContent=APP_VERSION;})();
+(function(){
+  // Tous les badges de version sont alimentés par APP_VERSION (évite les versions
+  // figées : le badge de l'écran de connexion était resté sur V1 260609-1557).
+  // Rejoué après DOMContentLoaded car le pied de page est écrit APRÈS ce script.
+  function stampVersions(){
+    var hv=document.getElementById('hdr-version'); if(hv) hv.textContent=APP_VERSION;
+    var ft=document.getElementById('ver-tag');     if(ft) ft.textContent=APP_VERSION;
+    var lv=document.querySelector('.login-ver');   if(lv) lv.textContent=APP_VERSION;
+  }
+  stampVersions();
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',stampVersions);
+})();
 var sess=lsLoadSession();
 if(sess&&sess.role&&sess.userId){role=sess.role; userId=sess.userId; if(((role==='chef'||role==='admin')&&chefInfo(userId))||(role==='personnel'&&pinfo(userId).id===userId)){document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.add('show'); initApp();}}
 window.addEventListener('load', function(){initFirebase(); if(!wkMon) updateStatusBar();});
