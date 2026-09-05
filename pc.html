@@ -212,6 +212,10 @@ input,select{font-size:14px}
 .poste-name{font-weight:600;color:#1e293b}
 .poste-h{text-align:right;font-weight:800;color:var(--bleu);font-variant-numeric:tabular-nums}
 .poste-bar{padding-right:8px}
+/* Bouton « ＋ LOT » de l'éditeur de journée. Classe préfixée vb- : aucune
+   règle existante n'est modifiée, rien d'autre ne peut être affecté. */
+.vb-lot-add{display:block;width:100%;margin-top:4px;padding:3px 6px;font-size:11px;font-weight:600;color:#0e7490;background:#f0fdfa;border:1px dashed #99f6e4;border-radius:6px;cursor:pointer}
+.vb-lot-add:hover{background:#ccfbf1;border-style:solid}
 .lot-list{padding:2px 0 8px 40px;margin-bottom:4px}
 .lot-row{display:grid;grid-template-columns:1fr 120px 70px;align-items:center;padding:4px 8px;font-size:12.5px;color:#475569;border-bottom:1px dashed #e2e8f0;gap:4px}
 .lot-row:last-child{border-bottom:none}
@@ -808,7 +812,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260903-1815";
+var APP_VERSION="V1 260905-1015";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2157,7 +2161,7 @@ function renderEditor(){
       +'<div class="editor-hours-inline"><input type="number" step="0.25" min="0.25" value="'+t.h+'" onchange="setEditorHours('+i+',this.value)"/></div>'
       +'<div><select '+(noC?'disabled':'')+' onchange="applyEditorChantier('+i+',this.value)">'+chOpts+'</select></div>'
       +'<div><input placeholder="Description devis" '+(noC?'disabled':'')+' value="'+escAttr(t.nom||'')+'" oninput="setEditorField('+i+',\'nom\',this.value)"/></div>'
-      +'<div>'+lotFieldHtml(t,noC,"setEditorField("+i+",'mbl',this.value)")+'</div>'
+      +'<div>'+lotFieldHtml(t,noC,"setEditorField("+i+",'mbl',this.value)","promptNewLot("+i+")")+'</div>'
       +'<div>'+(noC?'<div class="editor-muted">—</div>':officeColorPickerHtml(i,t))+'</div>'
       +'<button class="row-action add" onclick="addEditorTask('+i+')" title="Ajouter une tâche">+</button>'
       +'<button class="row-action del" onclick="removeEditorTask('+i+')" title="Supprimer cette tâche">×</button>'
@@ -2178,19 +2182,48 @@ function applyEditorChantier(i,val){
 }
 // Champ LOT : menu déroulant si le chantier a des LOTs définis dans la table, sinon saisie libre.
 // obj = {num, mbl} (tâche d'éditeur ou item de pointage).
-function lotFieldHtml(obj,disabled,onchangeAttr){
+// addBtnAttr (optionnel) : si fourni, ajoute sous le champ un bouton « ＋ LOT »
+// qui enregistre un nouveau LOT dans la table des chantiers. N'est passé que
+// par l'éditeur de journée du planning — le pointage reste inchangé.
+function lotFieldHtml(obj,disabled,onchangeAttr,addBtnAttr){
   if(disabled) return '<input placeholder="LOT" disabled value=""/>';
   var lots=chantierLots(obj.num);
   var cur=String(obj.mbl||'').trim();
+  var btn=addBtnAttr?('<button type="button" class="vb-lot-add" onclick="'+addBtnAttr+'" title="Créer un LOT pour ce chantier">＋ LOT</button>'):'';
   if(!lots.length){
     // Pas de LOTs définis pour ce chantier : saisie libre (comportement historique)
-    return '<input placeholder="LOT" maxlength="40" value="'+escAttr(obj.mbl||'')+'" onchange="'+onchangeAttr+'"/>';
+    return '<input placeholder="LOT" maxlength="40" value="'+escAttr(obj.mbl||'')+'" onchange="'+onchangeAttr+'"/>'+btn;
   }
   var opts='<option value="">— LOT —</option>';
   var inList=lots.some(function(l){return l===cur;});
   if(cur && !inList) opts+='<option value="'+escAttr(cur)+'" selected>'+escAttr(cur)+' (hors liste)</option>';
   opts+=lots.map(function(l){return '<option value="'+escAttr(l)+'" '+(l===cur?'selected':'')+'>'+escAttr(l)+'</option>';}).join('');
-  return '<select onchange="'+onchangeAttr+'" title="LOT (défini dans la table des chantiers)">'+opts+'</select>';
+  return '<select onchange="'+onchangeAttr+'" title="LOT (défini dans la table des chantiers)">'+opts+'</select>'+btn;
+}
+// Création d'un LOT depuis l'éditeur de journée, sans quitter la fenêtre.
+// Le LOT est ajouté à la table des chantiers (donc disponible partout, y
+// compris dans le pointage) puis sélectionné sur la tâche en cours.
+function promptNewLot(i){
+  var t=editorTasks[i]; if(!t) return;
+  var num=String(t.num||'').trim();
+  if(!num){ toast('Choisissez d\'abord un chantier'); return; }
+  var lot=prompt('Nouveau LOT pour le chantier '+num+' :\n(12 caractères maximum)', String(t.mbl||'').trim());
+  if(lot===null) return;                    // annulé
+  lot=String(lot).trim().slice(0,12);
+  if(!lot){ toast('LOT vide'); return; }
+  var c=CHANTIERS.find(function(x){return x.num===num;});
+  if(!c){
+    // Le chantier n'est pas encore dans la table : on propose de l'y créer
+    // avec ce LOT, plutôt que de refuser sans expliquer.
+    if(!confirm('Le chantier '+num+' n\'est pas dans la table des chantiers.\nL\'ajouter avec le LOT « '+lot+' » ?')) return;
+    if(!addChantierToTable(num,t.nom||'',lot)) return;
+  }else{
+    var deja=(Array.isArray(c.lots)?c.lots:[]).some(function(l){return l.toLowerCase()===lot.toLowerCase();});
+    if(!deja) addLotToChantier(num,lot);
+    else toast('Le LOT « '+lot+' » existe déjà — sélectionné');
+  }
+  t.mbl=lot;
+  renderEditor();
 }
 function addEditorTask(arg){
   var insertAfter=(typeof arg==='number')?arg:null;
