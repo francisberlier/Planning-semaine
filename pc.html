@@ -812,7 +812,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 260905-1015";
+var APP_VERSION="V1 261005-1230";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1500,6 +1500,9 @@ function applyPointageToPlanning(pid,di,opts){
 // Bouton "Reporter ce jour" — action explicite, force le report même si non pointé.
 function reportDayToPlanning(pid,di){
   var changed=applyPointageToPlanning(pid,di,{force:true});
+  // Fix 261005 : applyPointageToPlanning vide les extras APRÈS la sauvegarde faite par setDayTasks.
+  // Sans ce save, le vidage restait en mémoire et les imprévus réapparaissaient (heures en double).
+  if(changed){ lsSave(); fbSave(); renderHistoryIfOpen(); }
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
   updateStatusBar();
