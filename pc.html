@@ -812,7 +812,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261005-1230";
+var APP_VERSION="V1 261019-1215";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1414,9 +1414,13 @@ function syncPointageDay(pid,di,preserve){
   var before=JSON.stringify(day.items||[]);
   var tasks=getDayTasks(pid,di).filter(function(t){return !NOCH[t.type];});
   var map={};
-  (day.items||[]).forEach(function(it){var k=(it.lineId!=null)?('L'+it.lineId):(it.taskId||null); if(k) map[k]=it;});
+  // Fix 261019 : indexation par lineId ET par taskId. Le GSM réécrit les items sans lineId,
+  // et une tâche planning sans lineId stocké en reçoit un nouveau à chaque lecture : la recherche
+  // par lineId seule échouait -> masquage perdu, heures pointées écrasées par le planning.
+  var mapT={};
+  (day.items||[]).forEach(function(it){if(it.lineId!=null) map['L'+it.lineId]=it; if(it.taskId) mapT[it.taskId]=it;});
   day.items=tasks.map(function(t){
-    var old=map[(t.lineId!=null)?('L'+t.lineId):t.id];
+    var old=((t.lineId!=null)?map['L'+t.lineId]:null)||mapT[t.id];
     var newH;
     if(old && old.hidden){
       // Item masqué par l'utilisateur : il reste à 0h quoi qu'il arrive au planning.
@@ -2299,6 +2303,8 @@ function renderPointage(){
     if(readOnlyHere()) html+='<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:8px 14px;border-radius:8px;margin-bottom:8px;font-weight:700;font-size:13px">🔒 Lecture seule — vous consultez le pointage '+ctxLbl+' sans pouvoir le modifier (hors de votre périmètre).</div>';
     // Filtrer par contexte : Production exclut Bureau, Bureau ne montre que Bureau
     var act=activePeople().filter(isBE?isBureauPerson:isProductionPerson);
+    // Fix 261019 : synchroniser avant de calculer les totaux des pastilles (cohérence jour/semaine).
+    act.forEach(function(ap){for(var sdi=0;sdi<6;sdi++) syncPointageDay(ap.id,sdi,true);});
     var selKey=isBE?'ptSelPersBE':'ptSelPers';
     var selId=window[selKey]||((act[0]&&act[0].id)||'');
     if(selId && !pinfo(selId).active) selId=(act[0]&&act[0].id)||selId;
@@ -2328,6 +2334,8 @@ function renderPointage(){
   }finally{isRendering=false;}
 }
 function pointageDetailHtml(pid){
+  // Fix 261019 : synchroniser les 6 jours AVANT le total de la carte résumé.
+  for(var sdi=0;sdi<6;sdi++) syncPointageDay(pid,sdi,true);
   var p=pinfo(pid), col=tcol(p.g);
   var ro=readOnlyHere();
   var reportLbl=isBureauContext()?'✓ Reporter au planning Bureau':'✓ Reporter au planning';
