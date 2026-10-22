@@ -812,7 +812,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261019-1240";
+var APP_VERSION="V1 261022-1500";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1030,6 +1030,111 @@ function removeChantierFromTable(num){
   lsSave(); fbSave(); updateStatusBar();
   toast('Chantier '+num+' retiré de la liste');
   if(currentTab==='chantiers') renderChantiers();
+}
+/* ── V1 261022 — MODIFIER LE N° OU LE LIBELLÉ D'UN CHANTIER, PARTOUT ──────
+   Demande de Francis (22/10) : réservé à un ADMIN, sur PC. Décidé avec lui :
+   le changement s'applique PARTOUT — la table des chantiers, le planning
+   (Production et Bureau) et les pointages déjà encodés (lignes prévues et
+   chantiers imprévus), ainsi que la couleur attitrée du numéro.
+   Les heures ne bougent pas : seuls le numéro et le libellé des lignes
+   changent. Dans l'application menuiserie, les heures suivent au prochain
+   rapatriement des semaines concernées (le message final donne les dates).
+   L'historique (annuler) n'est pas réécrit : c'est une trace. */
+var chEditNum=null;
+function peutModifierChantier(num){
+  if(!isAdmin() || isAbsenceNum(num)) return false;
+  // Sur PC : un pointeur précis (souris). Un téléphone ou une tablette tactile ne le montre pas.
+  try{ if(window.matchMedia && !window.matchMedia('(pointer:fine)').matches) return false; }catch(e){}
+  return true;
+}
+function ouvrirModifChantier(num){
+  if(!peutModifierChantier(num)){ toast('🔒 Réservé à un administrateur, sur PC'); return; }
+  chEditNum=num; renderChantiers();
+  var el=document.getElementById('edit-ch-num'); if(el){ el.focus(); el.select(); }
+}
+function fermerModifChantier(){ chEditNum=null; renderChantiers(); }
+function ligneModifChantier(c){
+  var safeNum=escAttr(c.num).replace(/'/g,"\\'");
+  return '<tr style="background:#f0f9ff"><td colspan="5" style="padding:10px 12px">'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
+    +'<b style="color:#075985">✏ Modifier '+escAttr(chantierTableLabel(c))+'</b>'
+    +'<input id="edit-ch-num" value="'+escAttr(c.num)+'" placeholder="N°" style="padding:7px 10px;border:1px solid #7dd3fc;border-radius:8px;width:120px;font-size:14px" onkeydown="if(event.key===\'Enter\')validerModifChantier(\''+safeNum+'\');if(event.key===\'Escape\')fermerModifChantier();"/>'
+    +'<input id="edit-ch-nom" value="'+escAttr(c.nom||'')+'" placeholder="Client / libellé" style="padding:7px 10px;border:1px solid #7dd3fc;border-radius:8px;flex:1;min-width:220px;font-size:14px" onkeydown="if(event.key===\'Enter\')validerModifChantier(\''+safeNum+'\');if(event.key===\'Escape\')fermerModifChantier();"/>'
+    +'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800" onclick="validerModifChantier(\''+safeNum+'\')">Enregistrer partout</button>'
+    +'<button class="mini-btn" onclick="fermerModifChantier()">Annuler</button>'
+    +'</div>'
+    +'<div style="margin-top:6px;font-size:11px;color:#64748b">Le nouveau N° et le libellé remplacent les anciens dans la table, le planning et les pointages déjà encodés (Production et Bureau). Les heures ne changent pas.</div>'
+    +'</td></tr>';
+}
+// Parcourt un magasin (planning / pointage) et remplace, sur toute ligne portant
+// l'ancien N°, le N° et le libellé. Rend {lignes, semaines:{wk:1}, heures:{wk:1}}.
+// appliquer=false : compte seulement (pour la confirmation).
+function remplacerChantierDans(store, ancien, nouveau, nom, appliquer, res, estPointage){
+  var a=String(ancien||'').trim().toLowerCase();
+  function visiter(o, wk){
+    if(!o || typeof o!=='object') return;
+    if(Array.isArray(o)){ o.forEach(function(x){ visiter(x, wk); }); return; }
+    if(typeof o.num==='string' || typeof o.num==='number'){
+      if(String(o.num).trim().toLowerCase()===a && a){
+        res.lignes++; res.semaines[wk]=1;
+        if(estPointage && parseFloat(o.h)>0) res.heures[wk]=1;
+        if(appliquer){ o.num=nouveau; o.nom=nom; }
+      }
+    }
+    Object.keys(o).forEach(function(k){ var v=o[k]; if(v && typeof v==='object') visiter(v, wk); });
+  }
+  Object.keys(store||{}).forEach(function(wk){ visiter(store[wk], wk); });
+}
+function renommerChantier(ancien, nouveau, nom, appliquer){
+  var res={lignes:0, semaines:{}, heures:{}};
+  [[planning,false], [pointage,true], [planningBureau,false], [pointageBureau,true],
+   [legacyExtraPointage,true]].forEach(function(x){
+    remplacerChantierDans(x[0], ancien, nouveau, nom, appliquer, res, x[1]);
+  });
+  if(appliquer){
+    var c=CHANTIERS.find(function(x){return x.num===ancien;});
+    if(c){ c.num=nouveau; c.nom=nom; }
+    if(ancien!==nouveau && cColorOverride && cColorOverride[ancien]!==undefined){
+      cColorOverride[nouveau]=cColorOverride[ancien]; delete cColorOverride[ancien];
+    }
+    CHANTIERS=normalizeChantiersList(CHANTIERS);
+  }
+  return res;
+}
+function finDeSemaine(wk){ var d=new Date(wk+'T00:00:00'); d.setDate(d.getDate()+6); return d; }
+function dateAn(d){ return d.toLocaleDateString('fr-BE',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function validerModifChantier(ancien){
+  if(!peutModifierChantier(ancien)){ toast('🔒 Réservé à un administrateur, sur PC'); return; }
+  var c=CHANTIERS.find(function(x){return x.num===ancien;}); if(!c){ fermerModifChantier(); return; }
+  var nouveau=String((document.getElementById('edit-ch-num')||{}).value||'').trim();
+  var nom=String((document.getElementById('edit-ch-nom')||{}).value||'').trim();
+  if(!nouveau){ toast('Le N° de chantier est obligatoire'); return; }
+  if(isAbsenceNum(nouveau)){ toast('Ce N° est un code d\'absence'); return; }
+  if(nouveau===ancien && nom===(c.nom||'')){ fermerModifChantier(); return; }
+  var autre=CHANTIERS.find(function(x){return x!==c && x.num.toLowerCase()===nouveau.toLowerCase();});
+  if(autre){ toast('Le N° '+nouveau+' existe déjà ('+chantierTableLabel(autre)+') : choisissez-en un autre'); return; }
+  var avant=chantierTableLabel(c);
+  var n=renommerChantier(ancien, nouveau, nom, false);
+  var sem=Object.keys(n.semaines).sort(), hs=Object.keys(n.heures).sort();
+  var txt='Remplacer PARTOUT\n\n   '+avant+'\npar\n   '+chantierTableLabel({num:nouveau,nom:nom})+' ?\n\n'
+    +(n.lignes?(n.lignes+' ligne'+(n.lignes>1?'s':'')+' de planning et de pointage, sur '+sem.length+' semaine'+(sem.length>1?'s':'')+', seront modifiées.')
+             :'Aucune ligne de planning ni de pointage ne porte ce N° : seule la table change.')
+    +(ancien!==nouveau && hs.length?'\n\nDes heures sont pointées du '+dateAn(new Date(hs[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(hs[hs.length-1]))+'.':'');
+  if(!confirm(txt)) return;
+  var r=renommerChantier(ancien, nouveau, nom, true);
+  addHistoryEntry('Chantier modifié : '+avant+' → '+chantierTableLabel({num:nouveau,nom:nom})+' ('+r.lignes+' ligne'+(r.lignes>1?'s':'')+')',null,null);
+  chEditNum=null;
+  lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  renderChantiers();
+  if(ancien!==nouveau && hs.length){
+    alert('✓ Chantier '+ancien+' devenu '+nouveau+'.\n\nPour que ces heures passent aussi sur le N° '+nouveau+' dans l\'application menuiserie :\n'
+      +'Maintenance → « Rapatrier le pointage — période au choix » → Tout l\'historique\n'
+      +'(ou Comparatif heures → « Rapatrier le pointage », du '+dateAn(new Date(hs[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(hs[hs.length-1]))+').\n'
+      +'Le mois en cours et le précédent se font d\'eux-mêmes la nuit.\n\n'
+      +'(Les factures, commandes et devis restent sur l\'ancien N° dans l\'application menuiserie.)');
+  } else {
+    toast('✓ Chantier mis à jour partout ('+r.lignes+' ligne'+(r.lignes>1?'s':'')+')');
+  }
 }
 function importChantiersFromPlanning(){
   // Scanne tout l'historique (Production + Bureau) et ajoute les chantiers absents de la table.
@@ -1414,18 +1519,9 @@ function syncPointageDay(pid,di,preserve){
   var before=JSON.stringify(day.items||[]);
   var tasks=getDayTasks(pid,di).filter(function(t){return !NOCH[t.type];});
   var map={};
-  // Fix 261019 : indexation par lineId ET par taskId. Le GSM réécrit les items sans lineId,
-  // et une tâche planning sans lineId stocké en reçoit un nouveau à chaque lecture : la recherche
-  // par lineId seule échouait -> masquage perdu, heures pointées écrasées par le planning.
-  var mapT={};
-  (day.items||[]).forEach(function(it){if(it.lineId!=null) map['L'+it.lineId]=it; if(it.taskId) mapT[it.taskId]=it;});
-  // Fix 261019-1240 : priorité au taskId (unique dans la journée). Le lineId peut être dupliqué
-  // (tâche collée dans la même journée = même lineId) : deux tâches retrouvaient alors le même
-  // item, et les heures pointées sur l'une étaient écrasées. Un item ne sert qu'une seule fois.
-  var usedOld=[];
-  function pickOld(o){ if(!o||usedOld.indexOf(o)>=0) return null; usedOld.push(o); return o; }
+  (day.items||[]).forEach(function(it){var k=(it.lineId!=null)?('L'+it.lineId):(it.taskId||null); if(k) map[k]=it;});
   day.items=tasks.map(function(t){
-    var old=pickOld(mapT[t.id])||pickOld((t.lineId!=null)?map['L'+t.lineId]:null);
+    var old=map[(t.lineId!=null)?('L'+t.lineId):t.id];
     var newH;
     if(old && old.hidden){
       // Item masqué par l'utilisateur : il reste à 0h quoi qu'il arrive au planning.
@@ -1509,9 +1605,6 @@ function applyPointageToPlanning(pid,di,opts){
 // Bouton "Reporter ce jour" — action explicite, force le report même si non pointé.
 function reportDayToPlanning(pid,di){
   var changed=applyPointageToPlanning(pid,di,{force:true});
-  // Fix 261005 : applyPointageToPlanning vide les extras APRÈS la sauvegarde faite par setDayTasks.
-  // Sans ce save, le vidage restait en mémoire et les imprévus réapparaissaient (heures en double).
-  if(changed){ lsSave(); fbSave(); renderHistoryIfOpen(); }
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
   updateStatusBar();
@@ -1848,7 +1941,7 @@ function renderChantiers(){
   if(!CHANTIERS.length){
     html+='<div class="hist-empty">Liste vide. Ajoutez un chantier ci-dessus ou importez depuis le planning.</div>';
   } else {
-    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th style="width:110px">N°</th><th style="width:220px">Client / libellé</th><th>LOTs</th><th style="width:190px">Dernière activité</th><th style="width:105px"></th></tr></thead><tbody>';
+    html+='<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th style="width:110px">N°</th><th style="width:220px">Client / libellé</th><th>LOTs</th><th style="width:190px">Dernière activité</th><th style="width:190px"></th></tr></thead><tbody>';
     chList.forEach(function(c){
       var lk=lastMap[c.num.toLowerCase()];
       var actLbl, actStyle='color:#64748b';
@@ -1868,7 +1961,10 @@ function renderChantiers(){
         }).join('');
         lotsCell+='<span style="display:inline-flex;align-items:center;gap:3px;margin-left:'+(lots.length?'6px':'0')+'"><input id="lot-add-'+c.num.replace(/[^a-zA-Z0-9_-]/g,'_')+'" maxlength="12" placeholder="+ LOT" style="width:78px;padding:3px 7px;border:1px dashed var(--bd);border-radius:8px;font-size:11px" onkeydown="if(event.key===\'Enter\'){addLotToChantier(\''+safeNum+'\',this.value);}"/><button class="mini-btn" style="padding:3px 9px;font-size:11px;font-weight:800" onclick="addLotToChantier(\''+safeNum+'\',document.getElementById(\'lot-add-'+c.num.replace(/[^a-zA-Z0-9_-]/g,'_')+'\').value)">+</button></span>';
       }
-      html+='<tr><td><b>'+escAttr(c.num)+'</b></td><td>'+escAttr(c.nom||'')+'</td><td>'+lotsCell+'</td><td style="'+actStyle+';font-size:12px">'+actLbl+inactifBadge+'</td><td><button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;font-weight:700" onclick="removeChantierFromTable(\''+safeNum+'\')">🗑 Supprimer</button></td></tr>';
+      html+='<tr><td><b>'+escAttr(c.num)+'</b></td><td>'+escAttr(c.nom||'')+'</td><td>'+lotsCell+'</td><td style="'+actStyle+';font-size:12px">'+actLbl+inactifBadge+'</td><td style="white-space:nowrap">'
+        +(peutModifierChantier(c.num)?'<button class="mini-btn" style="color:#075985;border:1px solid #7dd3fc;background:#e0f2fe;font-weight:700;margin-right:4px" title="Changer le N° ou le libellé, partout (admin, sur PC)" onclick="ouvrirModifChantier(\''+safeNum+'\')">✏ Modifier</button>':'')
+        +'<button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;font-weight:700" onclick="removeChantierFromTable(\''+safeNum+'\')">🗑 Supprimer</button></td></tr>';
+      if(chEditNum===c.num) html+=ligneModifChantier(c);
     });
     html+='</tbody></table></div>';
   }
@@ -1934,11 +2030,7 @@ function pasteDayTasks(pid,di){
   if(existing.length&&!sameJSON(existing,dayClipboard.tasks)){
     if(!confirm('Remplacer les tâches déjà encodées pour '+pinfo(pid).nom+' — '+DAYS[di]+' '+fmtD(dayDate(di),true)+' ?')) return false;
   }
-  // Journée identique : ne rien toucher (sinon les nouveaux id réinitialiseraient le pointage du jour).
-  if(existing.length&&sameJSON(existing,dayClipboard.tasks)){ toast('Journée identique, rien à changer'); return false; }
-  // Fix 261019-1240 : chaque tâche collée reçoit un nouvel id et un nouveau lineId (plus de doublons).
-  var pasted=clone(dayClipboard.tasks).map(function(t){t.id=uid(); t.lineId=allocLineId(); return t;});
-  var changed=setDayTasks(pid,di,pasted,{undoLabel:'Collage de journée — '+pinfo(pid).nom+' '+DAYS[di]});
+  var changed=setDayTasks(pid,di,clone(dayClipboard.tasks),{undoLabel:'Collage de journée — '+pinfo(pid).nom+' '+DAYS[di]});
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
@@ -1962,7 +2054,7 @@ function pasteTaskAt(pid,di){
   if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   if(!(dayClipboard&&dayClipboard.mode==='task'&&dayClipboard.task)) return false;
   var tasks=getDayTasks(pid,di);
-  var copy=clone(dayClipboard.task); copy.id=uid(); copy.lineId=allocLineId(); // Fix 261019-1240 : lineId propre
+  var copy=clone(dayClipboard.task); copy.id=uid();
   tasks.push(copy);
   var changed=setDayTasks(pid,di,tasks,{undoLabel:'Collage de tâche — '+pinfo(pid).nom+' '+DAYS[di]});
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
@@ -2312,8 +2404,6 @@ function renderPointage(){
     if(readOnlyHere()) html+='<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:8px 14px;border-radius:8px;margin-bottom:8px;font-weight:700;font-size:13px">🔒 Lecture seule — vous consultez le pointage '+ctxLbl+' sans pouvoir le modifier (hors de votre périmètre).</div>';
     // Filtrer par contexte : Production exclut Bureau, Bureau ne montre que Bureau
     var act=activePeople().filter(isBE?isBureauPerson:isProductionPerson);
-    // Fix 261019 : synchroniser avant de calculer les totaux des pastilles (cohérence jour/semaine).
-    act.forEach(function(ap){for(var sdi=0;sdi<6;sdi++) syncPointageDay(ap.id,sdi,true);});
     var selKey=isBE?'ptSelPersBE':'ptSelPers';
     var selId=window[selKey]||((act[0]&&act[0].id)||'');
     if(selId && !pinfo(selId).active) selId=(act[0]&&act[0].id)||selId;
@@ -2343,8 +2433,6 @@ function renderPointage(){
   }finally{isRendering=false;}
 }
 function pointageDetailHtml(pid){
-  // Fix 261019 : synchroniser les 6 jours AVANT le total de la carte résumé.
-  for(var sdi=0;sdi<6;sdi++) syncPointageDay(pid,sdi,true);
   var p=pinfo(pid), col=tcol(p.g);
   var ro=readOnlyHere();
   var reportLbl=isBureauContext()?'✓ Reporter au planning Bureau':'✓ Reporter au planning';
