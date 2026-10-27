@@ -839,7 +839,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261027-2300";
+var APP_VERSION="V1 261027-2330";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2991,15 +2991,21 @@ function mvToutDecocher(){
   mvSel={}; document.querySelectorAll('.vb-mv-cb').forEach(function(cb){cb.checked=false;}); mvMajBarre(true);
 }
 function mvSelection(){ return Object.keys(mvSel).map(function(i){return MV_LINES[parseInt(i,10)];}).filter(function(L){return L&&L.id;}); }
-function mvChantiersCibles(){ return CHANTIERS.filter(function(c){return c.num && !isAbsenceNum(c.num);}); }
+// 261027-2330 : les codes d'absence (0005 Congé, 0006 Maladie, 0007 Chômage) sont aussi des destinations
+// possibles — pour remettre sur le vrai code des heures encodées sur un faux chantier « congé ».
+function mvChantiersCibles(){ return CHANTIERS.filter(function(c){return !!c.num;}); }
 function mvMajBarre(resetCible){
   var bar=document.getElementById('vb-mv-bar'); if(!bar) return;
   var sel=mvSelection();
   if(!sel.length){ bar.style.display='none'; bar.innerHTML=''; return; }
   if(resetCible) mvTargetNum='';
   var tot=0; sel.forEach(function(L){tot+=L.h;});
-  var chOpts='<option value="">— Chantier de destination —</option>'+mvChantiersCibles().map(function(c){
-    return '<option value="'+escAttr(c.num)+'"'+(c.num===mvTargetNum?' selected':'')+'>'+escAttr(chantierTableLabel(c))+'</option>';}).join('');
+  function opt(c){ return '<option value="'+escAttr(c.num)+'"'+(c.num===mvTargetNum?' selected':'')+'>'+escAttr(chantierTableLabel(c))+'</option>'; }
+  var cibles=mvChantiersCibles();
+  var absC=cibles.filter(function(c){return isAbsenceNum(c.num);}), chC=cibles.filter(function(c){return !isAbsenceNum(c.num);});
+  var chOpts='<option value="">— Chantier de destination —</option>'
+    +(absC.length?'<optgroup label="Absences">'+absC.map(opt).join('')+'</optgroup>':'')
+    +'<optgroup label="Chantiers">'+chC.map(opt).join('')+'</optgroup>';
   bar.innerHTML='<b>'+sel.length+' ligne'+(sel.length>1?'s':'')+' · '+fmtH(roundQuarter(tot))+'</b>'
     +'<span>→</span><select onchange="mvTargetNum=this.value">'+chOpts+'</select>'
     +'<button class="vb-mv-go" onclick="mvAppliquer()">Déplacer</button>'
@@ -3029,6 +3035,7 @@ function mvAppliquer(){
   var sem=Object.keys(wks).sort();
   var txt='Déplacer '+sel.length+' prestation'+(sel.length>1?'s':'')+' ('+fmtH(roundQuarter(tot))+')\n\n   de : '+Object.keys(src).join(', ')
     +'\n   vers : '+chantierTableLabel(c)
+    +(isAbsenceNum(c.num)?'\n\n⚠ Ces heures deviennent des ABSENCES ('+(c.nom||c.num)+') : elles ne comptent plus comme heures prestées.':'')
     +'\n\nLe LOT est gardé s\'il existe dans '+c.num+', sinon la ligne passe « sans LOT ».'
     +'\nLe planning et le pointage de ces lignes sont modifiés. Heures, personne, date et poste ne changent pas.'
     +'\nPériode : du '+dateAn(new Date(sem[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(sem[sem.length-1]))+'.';
