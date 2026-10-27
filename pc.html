@@ -242,6 +242,10 @@ input,select{font-size:14px}
 .vb-pm-tbl td:first-child,.vb-pm-tbl th:first-child{text-align:left}
 .vb-pm-tbl tr.vb-pm-tot td{background:#f8fafc;font-weight:800}
 .vb-pm-tbl td.vb-pm-rt{font-weight:800;background:#f8fafc}
+/* 261027-2300 : choix de l'unité heures / jours */
+.vb-pm-unit{display:inline-flex;border:1px solid #cbd5e1;border-radius:7px;overflow:hidden;margin:2px 0 6px}
+.vb-pm-unit button{font-size:11px;padding:3px 10px;border:none;background:#fff;color:#334155;font-weight:700;cursor:pointer}
+.vb-pm-unit button.on{background:#0e7490;color:#fff}
 .lot-name{padding-left:6px}
 .lot-h{text-align:right;font-weight:700;color:var(--bleu);font-variant-numeric:tabular-nums}
 @media (max-width:900px){.poste-row{grid-template-columns:18px 18px 1fr 70px;}.poste-bar{display:none}.lot-row{grid-template-columns:1fr 70px}.lot-row .lot-bar{display:none}}
@@ -835,7 +839,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261027-2200";
+var APP_VERSION="V1 261027-2300";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2798,8 +2802,8 @@ function chantierDetailHtml(C,safeId,num){
   // 261027-2200 : tableau personnes × 12 derniers mois + export Excel
   var pmId=safeId+'_pm';
   html+='<div class="vb-pm-btns"><button class="vb-mv-all" onclick="togglePosteDetail(\''+pmId+'\')">👥 Personnes × mois</button>'
-    +'<button class="vb-mv-all" onclick="pmExportXlsx(\''+String(num).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">⬇ Excel</button></div>';
-  html+='<div class="vb-pm-box" id="'+pmId+'" style="display:none"><span class="dash-arrow" id="ar_'+pmId+'" style="display:none"></span>'+pmTableHtml(C)+'</div>';
+    +'<button class="vb-mv-all" onclick="pmExportXlsx(\''+String(num).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">⬇ Excel</button>'+pmUnitHtml()+'</div>';
+  html+='<div class="vb-pm-box" id="'+pmId+'" style="display:none"><span class="dash-arrow" id="ar_'+pmId+'" style="display:none"></span><div class="vb-pm-tab" data-k="'+escAttr(String(num))+'">'+pmTableHtml(C)+'</div></div>';
   var mvOn=mvPeutDeplacer();
   if(mvOn && C.lines && Object.keys(C.lines).length) html+='<button class="vb-mv-all" onclick="mvCocherBloc(\''+safeId+'\',true)" title="Pour tout déplacer d\'un coup (fusion)">☑ Sélectionner toutes les lignes de ce chantier</button>';
   var anyPoste=false;
@@ -2872,6 +2876,29 @@ function pmData(C){
   var grand=roundQuarter(colTot.reduce(function(a,b){return a+b;},0));
   return {months:months, rows:rows, colTot:colTot, grand:grand};
 }
+// 261027-2300 : unité d'affichage et d'export (heures ou jours, 1 jour = 8 h). Mémorisée par navigateur.
+var PM_H_PAR_JOUR=8, pmUnit='h';
+try{ var _pu=localStorage.getItem('vb_pmunit_v1'); if(_pu==='h'||_pu==='j') pmUnit=_pu; }catch(e){}
+function pmConv(v){ return (pmUnit==='j')?Math.round((v/PM_H_PAR_JOUR)*100)/100:v; }
+function pmFmt(v,court){
+  if(pmUnit!=='j') return court?fmtHShort(v):fmtH(v);
+  var j=pmConv(v); return String(j).replace('.',',')+(court?'j':' j');
+}
+function pmUnitHtml(){
+  return '<span class="vb-pm-unit" title="1 jour = '+PM_H_PAR_JOUR+' h"><button class="'+(pmUnit==='h'?'on':'')+'" onclick="pmSetUnit(\'h\')">Heures</button><button class="'+(pmUnit==='j'?'on':'')+'" onclick="pmSetUnit(\'j\')">Jours</button></span>';
+}
+function pmObj(key){
+  key=String(key);
+  if(key.indexOf('ABS:')===0) return DASH_AGG&&DASH_AGG.absences&&DASH_AGG.absences[key.slice(4)];
+  return DASH_AGG&&DASH_AGG.chantiers&&DASH_AGG.chantiers[key];
+}
+function pmSetUnit(u){
+  pmUnit=(u==='j')?'j':'h';
+  try{ localStorage.setItem('vb_pmunit_v1',pmUnit); }catch(e){}
+  // Mise à jour sur place (les blocs ouverts restent ouverts)
+  document.querySelectorAll('.vb-pm-tab').forEach(function(el){ var o=pmObj(el.getAttribute('data-k')); if(o) el.innerHTML=pmTableHtml(o); });
+  document.querySelectorAll('.vb-pm-unit').forEach(function(el){ var b=el.querySelectorAll('button'); b[0].classList.toggle('on',pmUnit==='h'); b[1].classList.toggle('on',pmUnit==='j'); });
+}
 function pmTableHtml(C){
   var d=pmData(C);
   if(!d.rows.length) return '<div style="color:#94a3b8;font-size:12px;padding:4px">Aucune heure sur les 12 derniers mois.</div>';
@@ -2879,9 +2906,9 @@ function pmTableHtml(C){
   d.months.forEach(function(mo){h+='<th>'+mo.lbl+'</th>';});
   h+='<th>Total</th></tr></thead><tbody>';
   d.rows.forEach(function(r){
-    h+='<tr><td>'+escAttr(r.nom)+'</td>'+r.vals.map(function(v){return '<td>'+(v?fmtHShort(v):'·')+'</td>';}).join('')+'<td class="vb-pm-rt">'+fmtH(r.tot)+'</td></tr>';
+    h+='<tr><td>'+escAttr(r.nom)+'</td>'+r.vals.map(function(v){return '<td>'+(v?pmFmt(v,true):'·')+'</td>';}).join('')+'<td class="vb-pm-rt">'+pmFmt(r.tot)+'</td></tr>';
   });
-  h+='<tr class="vb-pm-tot"><td>Total</td>'+d.colTot.map(function(v){return '<td>'+(v?fmtHShort(v):'·')+'</td>';}).join('')+'<td>'+fmtH(d.grand)+'</td></tr>';
+  h+='<tr class="vb-pm-tot"><td>Total</td>'+d.colTot.map(function(v){return '<td>'+(v?pmFmt(v,true):'·')+'</td>';}).join('')+'<td>'+pmFmt(d.grand)+'</td></tr>';
   return h+'</tbody></table>';
 }
 function pmChargerXlsx(cb){
@@ -2901,10 +2928,11 @@ function pmExportXlsx(num){
   var titre=num+(C.nom?' '+C.nom:'');
   var filtre=(dashFilter==='prod')?'Production':(dashFilter==='bureau')?'Bureau d\'étude':'Production + Bureau';
   var periode=d.months[0].lbl+' → '+d.months[d.months.length-1].lbl;
-  var aoa=[[titre],['Heures du planning · '+filtre+' · '+periode],[],['Personne'].concat(d.months.map(function(m){return m.lbl;})).concat(['Total'])];
-  d.rows.forEach(function(r){aoa.push([r.nom].concat(r.vals.map(function(v){return v||null;})).concat([r.tot]));});
-  aoa.push(['Total'].concat(d.colTot).concat([d.grand]));
-  var fname='heures_'+String(num+(isAbsKey?'_'+C.nom:'')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9_-]+/gi,'_')+'_'+d.months[0].key+'_'+d.months[d.months.length-1].key;
+  var uLbl=(pmUnit==='j')?('en jours (1 j = '+PM_H_PAR_JOUR+' h)'):'en heures';
+  var aoa=[[titre],['Planning · '+filtre+' · '+periode+' · '+uLbl],[],['Personne'].concat(d.months.map(function(m){return m.lbl;})).concat(['Total'])];
+  d.rows.forEach(function(r){aoa.push([r.nom].concat(r.vals.map(function(v){return v?pmConv(v):null;})).concat([pmConv(r.tot)]));});
+  aoa.push(['Total'].concat(d.colTot.map(function(v){return v?pmConv(v):null;})).concat([pmConv(d.grand)]));
+  var fname=((pmUnit==='j')?'jours_':'heures_')+String(num+(isAbsKey?'_'+C.nom:'')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9_-]+/gi,'_')+'_'+d.months[0].key+'_'+d.months[d.months.length-1].key;
   pmChargerXlsx(function(ok){
     if(ok){
       var ws=XLSX.utils.aoa_to_sheet(aoa);
@@ -3201,7 +3229,7 @@ function renderDashboard(){
     var A=agg.absences[k], ti=tinfo(k), sid='absdet_'+k;
     html+='<div class="chantier-block" style="border-left:4px solid '+ti.col+'">'
       +'<div class="chantier-head" onclick="toggleChantierBlock(\''+sid+'\')" style="cursor:pointer"><div><span class="dash-arrow" id="ar_'+sid+'">▸</span> <b>'+escAttr(ti.lbl)+'</b></div><div class="chantier-total">'+fmtH(pmData(A).grand)+'</div></div>'
-      +'<div id="'+sid+'" style="display:none"><div class="vb-pm-btns"><button class="vb-mv-all" onclick="pmExportXlsx(\'ABS:'+k+'\')">⬇ Excel</button></div><div class="vb-pm-box">'+pmTableHtml(A)+'</div></div>'
+      +'<div id="'+sid+'" style="display:none"><div class="vb-pm-btns"><button class="vb-mv-all" onclick="pmExportXlsx(\'ABS:'+k+'\')">⬇ Excel</button>'+pmUnitHtml()+'</div><div class="vb-pm-box"><div class="vb-pm-tab" data-k="ABS:'+k+'">'+pmTableHtml(A)+'</div></div></div>'
       +'</div>';
   });
   html+='</div>';
