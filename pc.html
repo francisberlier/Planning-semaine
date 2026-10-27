@@ -812,7 +812,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261022-1500";
+var APP_VERSION="V1 261027-1800";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1519,9 +1519,24 @@ function syncPointageDay(pid,di,preserve){
   var before=JSON.stringify(day.items||[]);
   var tasks=getDayTasks(pid,di).filter(function(t){return !NOCH[t.type];});
   var map={};
-  (day.items||[]).forEach(function(it){var k=(it.lineId!=null)?('L'+it.lineId):(it.taskId||null); if(k) map[k]=it;});
+  // Fix 261019 : indexation par lineId ET par taskId. Le GSM réécrit les items sans lineId,
+  // et une tâche planning sans lineId stocké en reçoit un nouveau à chaque lecture : la recherche
+  // par lineId seule échouait -> masquage perdu, heures pointées écrasées par le planning.
+  var mapT={};
+  (day.items||[]).forEach(function(it){if(it.lineId!=null) map['L'+it.lineId]=it; if(it.taskId) mapT[it.taskId]=it;});
+  // Fix 261019-1240 : priorité au taskId (unique dans la journée). Le lineId peut être dupliqué
+  // (tâche collée dans la même journée = même lineId) : deux tâches retrouvaient alors le même
+  // item, et les heures pointées sur l'une étaient écrasées. Un item ne sert qu'une seule fois.
+  var usedOld=[];
+  var taskIdsNow={}; tasks.forEach(function(t){ if(t.id) taskIdsNow[t.id]=1; });
+  function pickOld(o){ if(!o||usedOld.indexOf(o)>=0) return null; usedOld.push(o); return o; }
   day.items=tasks.map(function(t){
-    var old=map[(t.lineId!=null)?('L'+t.lineId):t.id];
+    // Fix 261027 : le repli par lineId n'accepte JAMAIS un item masqué, ni un item dont la tâche
+    // existe encore au planning. Sinon un imprévu reporté (qui peut hériter du lineId de la ligne
+    // planning masquée) retrouvait cette ligne masquée et disparaissait à 0h (cas Marco 21/10).
+    var byLine=(t.lineId!=null)?map['L'+t.lineId]:null;
+    if(byLine && (byLine.hidden || (byLine.taskId && byLine.taskId!==t.id && taskIdsNow[byLine.taskId]))) byLine=null;
+    var old=pickOld(mapT[t.id])||pickOld(byLine);
     var newH;
     if(old && old.hidden){
       // Item masqué par l'utilisateur : il reste à 0h quoi qu'il arrive au planning.
@@ -1605,6 +1620,9 @@ function applyPointageToPlanning(pid,di,opts){
 // Bouton "Reporter ce jour" — action explicite, force le report même si non pointé.
 function reportDayToPlanning(pid,di){
   var changed=applyPointageToPlanning(pid,di,{force:true});
+  // Fix 261005 : applyPointageToPlanning vide les extras APRÈS la sauvegarde faite par setDayTasks.
+  // Sans ce save, le vidage restait en mémoire et les imprévus réapparaissaient (heures en double).
+  if(changed){ lsSave(); fbSave(); renderHistoryIfOpen(); }
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
   updateStatusBar();
@@ -2030,7 +2048,11 @@ function pasteDayTasks(pid,di){
   if(existing.length&&!sameJSON(existing,dayClipboard.tasks)){
     if(!confirm('Remplacer les tâches déjà encodées pour '+pinfo(pid).nom+' — '+DAYS[di]+' '+fmtD(dayDate(di),true)+' ?')) return false;
   }
-  var changed=setDayTasks(pid,di,clone(dayClipboard.tasks),{undoLabel:'Collage de journée — '+pinfo(pid).nom+' '+DAYS[di]});
+  // Journée identique : ne rien toucher (sinon les nouveaux id réinitialiseraient le pointage du jour).
+  if(existing.length&&sameJSON(existing,dayClipboard.tasks)){ toast('Journée identique, rien à changer'); return false; }
+  // Fix 261019-1240 : chaque tâche collée reçoit un nouvel id et un nouveau lineId (plus de doublons).
+  var pasted=clone(dayClipboard.tasks).map(function(t){t.id=uid(); t.lineId=allocLineId(); return t;});
+  var changed=setDayTasks(pid,di,pasted,{undoLabel:'Collage de journée — '+pinfo(pid).nom+' '+DAYS[di]});
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if(currentTab==='myplan') renderMyPlan();
   if(currentTab==='pointage') renderPointage();
@@ -2054,7 +2076,7 @@ function pasteTaskAt(pid,di){
   if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   if(!(dayClipboard&&dayClipboard.mode==='task'&&dayClipboard.task)) return false;
   var tasks=getDayTasks(pid,di);
-  var copy=clone(dayClipboard.task); copy.id=uid();
+  var copy=clone(dayClipboard.task); copy.id=uid(); copy.lineId=allocLineId(); // Fix 261019-1240 : lineId propre
   tasks.push(copy);
   var changed=setDayTasks(pid,di,tasks,{undoLabel:'Collage de tâche — '+pinfo(pid).nom+' '+DAYS[di]});
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
@@ -2404,6 +2426,8 @@ function renderPointage(){
     if(readOnlyHere()) html+='<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:8px 14px;border-radius:8px;margin-bottom:8px;font-weight:700;font-size:13px">🔒 Lecture seule — vous consultez le pointage '+ctxLbl+' sans pouvoir le modifier (hors de votre périmètre).</div>';
     // Filtrer par contexte : Production exclut Bureau, Bureau ne montre que Bureau
     var act=activePeople().filter(isBE?isBureauPerson:isProductionPerson);
+    // Fix 261019 : synchroniser avant de calculer les totaux des pastilles (cohérence jour/semaine).
+    act.forEach(function(ap){for(var sdi=0;sdi<6;sdi++) syncPointageDay(ap.id,sdi,true);});
     var selKey=isBE?'ptSelPersBE':'ptSelPers';
     var selId=window[selKey]||((act[0]&&act[0].id)||'');
     if(selId && !pinfo(selId).active) selId=(act[0]&&act[0].id)||selId;
@@ -2433,6 +2457,8 @@ function renderPointage(){
   }finally{isRendering=false;}
 }
 function pointageDetailHtml(pid){
+  // Fix 261019 : synchroniser les 6 jours AVANT le total de la carte résumé.
+  for(var sdi=0;sdi<6;sdi++) syncPointageDay(pid,sdi,true);
   var p=pinfo(pid), col=tcol(p.g);
   var ro=readOnlyHere();
   var reportLbl=isBureauContext()?'✓ Reporter au planning Bureau':'✓ Reporter au planning';
