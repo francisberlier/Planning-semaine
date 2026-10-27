@@ -219,6 +219,20 @@ input,select{font-size:14px}
 .lot-list{padding:2px 0 8px 40px;margin-bottom:4px}
 .lot-row{display:grid;grid-template-columns:1fr 120px 70px;align-items:center;padding:4px 8px;font-size:12.5px;color:#475569;border-bottom:1px dashed #e2e8f0;gap:4px}
 .lot-row:last-child{border-bottom:none}
+/* 261027-2100 : déplacement de lignes (Dashboard) — classes vb- nouvelles, aucune règle existante modifiée */
+.vb-lot-click{cursor:pointer}
+.vb-lot-click:hover{background:#f1f5f9}
+.vb-mv-lines{padding:4px 0 8px 14px;border-left:2px solid #e2e8f0;margin:2px 0 6px 6px}
+.vb-mv-row{display:flex;align-items:center;gap:8px;padding:3px 6px;font-size:12px;color:#334155;border-radius:6px;cursor:pointer}
+.vb-mv-row:hover{background:#f8fafc}
+.vb-mv-row .vb-mv-h{margin-left:auto;font-weight:700}
+.vb-mv-row.vb-mv-off{color:#94a3b8;cursor:default}
+.vb-mv-all{font-size:11px;padding:3px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:7px;cursor:pointer;margin:2px 0 6px;color:#0e7490;font-weight:700}
+.vb-mv-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:34px;z-index:60;background:#0f2742;color:#fff;border-radius:12px;padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13px;max-width:96vw}
+.vb-mv-bar select{padding:6px 8px;border-radius:7px;border:1px solid #94a3b8;font-size:13px;max-width:280px}
+.vb-mv-bar button{padding:7px 12px;border-radius:8px;border:none;font-weight:800;cursor:pointer}
+.vb-mv-go{background:#22c55e;color:#06290f}
+.vb-mv-x{background:#334155;color:#fff}
 .lot-name{padding-left:6px}
 .lot-h{text-align:right;font-weight:700;color:var(--bleu);font-variant-numeric:tabular-nums}
 @media (max-width:900px){.poste-row{grid-template-columns:18px 18px 1fr 70px;}.poste-bar{display:none}.lot-row{grid-template-columns:1fr 70px}.lot-row .lot-bar{display:none}}
@@ -812,7 +826,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261027-1800";
+var APP_VERSION="V1 261027-2100";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2665,7 +2679,7 @@ function dashboardAggregate(){
   }
   function ensureC(num){
     if(!chantiers[num]) chantiers[num]={
-      week:0,month:0,year:0,total:0,m12:{},nom:'',byPoste:{},byLot:{},byPosteLot:{},
+      week:0,month:0,year:0,total:0,m12:{},nom:'',byPoste:{},byLot:{},byPosteLot:{},lines:{},
       totalProd:0,totalBE:0
     };
     return chantiers[num];
@@ -2689,6 +2703,8 @@ function dashboardAggregate(){
           var inThisYear=(dY===curYear);
           var inThisMonth=(dY===curYear&&dM===curMonth);
           var tasks=tasksFromDayObj(days[di]);
+          // 261027-2100 : tableau brut du planning, pour pouvoir retrouver chaque ligne (déplacement).
+          var rawArr=(days[di]&&Array.isArray(days[di].tasks))?days[di].tasks:null;
           tasks.forEach(function(t){
             var h=roundQuarter(t.h); if(h<=0) return;
             var P=ensureP(pid);
@@ -2738,6 +2754,10 @@ function dashboardAggregate(){
                   C.byLot[lot]=(C.byLot[lot]||0)+h;
                   if(!C.byPosteLot[typ]) C.byPosteLot[typ]={};
                   C.byPosteLot[typ][lot]=(C.byPosteLot[typ][lot]||0)+h;
+                  // 261027-2100 : la ligne elle-même (adressable si le jour est au format tasks avec un id)
+                  var okId=!!(rawArr && t.id && rawArr.some(function(r){return r&&r.id===t.id;}));
+                  var lk=typ+'|'+lot; if(!C.lines[lk]) C.lines[lk]=[];
+                  C.lines[lk].push({sc:scope,wk:wk,pid:pid,di:dnum,id:okId?t.id:null,h:h,num:num,nom:t.nom||'',mbl:String(t.mbl||'').trim(),date:dDate});
                 }
               }
             }
@@ -2754,11 +2774,13 @@ function dashBar(val,max,color){
   var pct=max>0?Math.round((val/max)*100):0;
   return '<div style="background:#eef2f7;border-radius:6px;height:10px;overflow:hidden;min-width:60px"><div style="height:100%;width:'+pct+'%;background:'+(color||'#2563eb')+'"></div></div>';
 }
-function chantierDetailHtml(C,safeId){
+function chantierDetailHtml(C,safeId,num){
   // Postes Production + Postes Bureau d'étude (CNC = production CNC du BE)
   var posteOrder=['M','A','F','T','P','G','B','D','PL','E','GS','R','CNC'];
   var maxP=0; posteOrder.forEach(function(t){var v=C.byPoste[t]||0; if(v>maxP)maxP=v;});
   var html='<div class="cdet-postes">';
+  var mvOn=mvPeutDeplacer();
+  if(mvOn && C.lines && Object.keys(C.lines).length) html+='<button class="vb-mv-all" onclick="mvCocherBloc(\''+safeId+'\',true)" title="Pour tout déplacer d\'un coup (fusion)">☑ Sélectionner toutes les lignes de ce chantier</button>';
   var anyPoste=false;
   posteOrder.forEach(function(t){
     var v=C.byPoste[t]||0; if(v<=0) return;
@@ -2778,7 +2800,13 @@ function chantierDetailHtml(C,safeId){
     var maxL=0; lkeys.forEach(function(k){if(lots[k]>maxL)maxL=lots[k];});
     html+='<div class="lot-list" id="'+posteId+'" style="display:none">';
     if(!lkeys.length) html+='<div class="lot-row" style="color:#94a3b8">Aucun LOT.</div>';
-    lkeys.forEach(function(k){var v2=lots[k]; html+='<div class="lot-row"><span class="lot-name">'+escAttr(k)+'</span><span class="lot-bar">'+dashBar(v2,maxL,ti.col)+'</span><span class="lot-h">'+fmtH(v2)+'</span></div>';});
+    lkeys.forEach(function(k,ki){
+      var v2=lots[k];
+      var lines=(C.lines&&C.lines[t+'|'+k])||[];
+      var lid=posteId+'_l'+ki;
+      html+='<div class="lot-row vb-lot-click" onclick="togglePosteDetail(\''+lid+'\')" title="Cliquer pour voir les prestations"><span class="lot-name"><span class="dash-arrow" id="ar_'+lid+'">▸</span> '+escAttr(k)+'</span><span class="lot-bar">'+dashBar(v2,maxL,ti.col)+'</span><span class="lot-h">'+fmtH(v2)+'</span></div>';
+      html+='<div class="vb-mv-lines" id="'+lid+'" style="display:none">'+mvLignesHtml(lines,lid,mvOn)+'</div>';
+    });
     html+='</div>';
   });
   if(!anyPoste) html+='<div style="color:#94a3b8;padding:6px 0">Aucune heure encodée.</div>';
@@ -2800,10 +2828,127 @@ function toggleChantierBlock(id){
   if(ar) ar.textContent=open?'▸':'▾';
 }
 function setDashFilter(f){dashFilter=f; renderDashboard();}
+/* ══════════ DÉPLACER DES PRESTATIONS VERS UN AUTRE CHANTIER / LOT (261027-2100) ══════════
+   Demande de Francis (27/10) : depuis le Dashboard, sélectionner des prestations et les
+   mettre sur un autre chantier et/ou un autre LOT. Réservé à un ADMIN sur PC (comme
+   « ✏ Modifier chantier »). Modifie le planning ET le pointage des mêmes lignes
+   (Production et Bureau). Heures, personne, date et poste inchangés. Annulable (Undo).
+   LOT : gardé s'il existe dans le chantier de destination, sinon « sans LOT ».
+   Quand un ancien N° n'a plus aucune ligne, on propose de le retirer de la table. */
+var MV_LINES=[], mvSel={}, mvTargetNum='';
+function mvPeutDeplacer(){
+  if(!isAdmin()) return false;
+  try{ if(window.matchMedia && !window.matchMedia('(pointer:fine)').matches) return false; }catch(e){}
+  return true;
+}
+function mvLignesHtml(lines,lid,mvOn){
+  if(!lines.length) return '<div class="vb-mv-row vb-mv-off">Aucune prestation.</div>';
+  var sorted=lines.slice().sort(function(a,b){return a.date-b.date || String(pinfo(a.pid).nom).localeCompare(String(pinfo(b.pid).nom));});
+  var html='';
+  if(mvOn) html+='<button class="vb-mv-all" onclick="mvCocherBloc(\''+lid+'\',true)">☑ Tout cocher</button> <button class="vb-mv-all" onclick="mvCocherBloc(\''+lid+'\',false)">☐ Tout décocher</button>';
+  sorted.forEach(function(L){
+    var i=MV_LINES.length; MV_LINES.push(L);
+    var dt=L.date.toLocaleDateString('fr-BE',{weekday:'short',day:'2-digit',month:'2-digit',year:'2-digit'});
+    var lbl=dt+' · '+escAttr(pinfo(L.pid).nom)+(L.sc==='bureau'?' · <span style="color:#4f46e5">Bureau</span>':'');
+    if(mvOn && L.id) html+='<label class="vb-mv-row"><input type="checkbox" class="vb-mv-cb" data-i="'+i+'" onchange="mvToggle(this)"/>'+lbl+'<span class="vb-mv-h">'+fmtH(L.h)+'</span></label>';
+    else html+='<div class="vb-mv-row'+(mvOn?' vb-mv-off" title="Ancien format de journée : à modifier dans le planning':'')+'">'+lbl+'<span class="vb-mv-h">'+fmtH(L.h)+'</span></div>';
+  });
+  return html;
+}
+function mvToggle(cb){ var i=cb.getAttribute('data-i'); if(cb.checked) mvSel[i]=1; else delete mvSel[i]; mvMajBarre(true); }
+function mvCocherBloc(id,on){
+  var box=document.getElementById(id); if(!box) return;
+  box.querySelectorAll('.vb-mv-cb').forEach(function(cb){ cb.checked=on; var i=cb.getAttribute('data-i'); if(on) mvSel[i]=1; else delete mvSel[i]; });
+  mvMajBarre(true);
+}
+function mvToutDecocher(){
+  mvSel={}; document.querySelectorAll('.vb-mv-cb').forEach(function(cb){cb.checked=false;}); mvMajBarre(true);
+}
+function mvSelection(){ return Object.keys(mvSel).map(function(i){return MV_LINES[parseInt(i,10)];}).filter(function(L){return L&&L.id;}); }
+function mvChantiersCibles(){ return CHANTIERS.filter(function(c){return c.num && !isAbsenceNum(c.num);}); }
+function mvMajBarre(resetCible){
+  var bar=document.getElementById('vb-mv-bar'); if(!bar) return;
+  var sel=mvSelection();
+  if(!sel.length){ bar.style.display='none'; bar.innerHTML=''; return; }
+  if(resetCible) mvTargetNum='';
+  var tot=0; sel.forEach(function(L){tot+=L.h;});
+  var chOpts='<option value="">— Chantier de destination —</option>'+mvChantiersCibles().map(function(c){
+    return '<option value="'+escAttr(c.num)+'"'+(c.num===mvTargetNum?' selected':'')+'>'+escAttr(chantierTableLabel(c))+'</option>';}).join('');
+  bar.innerHTML='<b>'+sel.length+' ligne'+(sel.length>1?'s':'')+' · '+fmtH(roundQuarter(tot))+'</b>'
+    +'<span>→</span><select onchange="mvTargetNum=this.value">'+chOpts+'</select>'
+    +'<button class="vb-mv-go" onclick="mvAppliquer()">Déplacer</button>'
+    +'<button class="vb-mv-x" onclick="mvToutDecocher()">Désélectionner</button>';
+  bar.style.display='flex';
+}
+// LOT conservé s'il existe (sans tenir compte des majuscules) dans le chantier de destination, sinon vide.
+function mvLotCible(numCible,lot){
+  lot=String(lot||'').trim(); if(!lot) return '';
+  var f=chantierLots(numCible).find(function(l){return l.toLowerCase()===lot.toLowerCase();});
+  return f||'';
+}
+function mvTrouverTache(L){
+  var P=(L.sc==='bureau')?planningBureau:planning;
+  var day=P[L.wk]&&P[L.wk][L.pid]&&P[L.wk][L.pid][L.di];
+  if(!day||!Array.isArray(day.tasks)) return null;
+  for(var i=0;i<day.tasks.length;i++){ if(day.tasks[i]&&day.tasks[i].id===L.id) return day.tasks[i]; }
+  return null;
+}
+function mvAppliquer(){
+  if(!mvPeutDeplacer()){ toast('🔒 Réservé à un administrateur, sur PC'); return; }
+  var sel=mvSelection(); if(!sel.length) return;
+  var c=mvChantiersCibles().find(function(x){return x.num===mvTargetNum;});
+  if(!c){ toast('Choisissez le chantier de destination'); return; }
+  var tot=0, wks={}, src={}, srcNums={}; sel.forEach(function(L){tot+=L.h; wks[L.wk]=1; src[L.num]=1; srcNums[L.num]=1;});
+  if(srcNums[c.num] && Object.keys(srcNums).length===1){ toast('Ces lignes sont déjà sur '+c.num); return; }
+  var sem=Object.keys(wks).sort();
+  var txt='Déplacer '+sel.length+' prestation'+(sel.length>1?'s':'')+' ('+fmtH(roundQuarter(tot))+')\n\n   de : '+Object.keys(src).join(', ')
+    +'\n   vers : '+chantierTableLabel(c)
+    +'\n\nLe LOT est gardé s\'il existe dans '+c.num+', sinon la ligne passe « sans LOT ».'
+    +'\nLe planning et le pointage de ces lignes sont modifiés. Heures, personne, date et poste ne changent pas.'
+    +'\nPériode : du '+dateAn(new Date(sem[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(sem[sem.length-1]))+'.';
+  if(!confirm(txt)) return;
+  pushUndo('Déplacement de '+sel.length+' prestation'+(sel.length>1?'s':'')+' → '+c.num);
+  var nOk=0, nPt=0;
+  sel.forEach(function(L){
+    var t=mvTrouverTache(L); if(!t) return;
+    var lot=mvLotCible(c.num,t.mbl);
+    t.num=c.num; t.nom=c.nom||''; t.mbl=lot;
+    t.colorIdx=(cColorOverride&&cColorOverride[c.num]!==undefined)?cColorOverride[c.num]:null;
+    nOk++;
+    // Pointage des mêmes lignes (lien par taskId)
+    var PT=(L.sc==='bureau')?pointageBureau:pointage;
+    var pd=PT[L.wk]&&PT[L.wk][L.pid]&&PT[L.wk][L.pid][L.di];
+    if(pd&&pd.items){
+      var its=Array.isArray(pd.items)?pd.items:Object.keys(pd.items).map(function(k){return pd.items[k];});
+      its.forEach(function(it){ if(it&&it.taskId===L.id){ it.num=c.num; it.nom=c.nom||''; it.mbl=lot; nPt++; } });
+    }
+  });
+  addHistoryEntry('Prestations déplacées : '+Object.keys(src).join(', ')+' → '+chantierTableLabel(c)+' ('+nOk+' ligne'+(nOk>1?'s':'')+', '+fmtH(roundQuarter(tot))+')',null,null);
+  // Ancien N° devenu vide : proposer de le retirer de la table des chantiers.
+  Object.keys(srcNums).forEach(function(old){
+    if(old===c.num) return;
+    var ent=CHANTIERS.find(function(x){return x.num===old;}); if(!ent) return;
+    if(renommerChantier(old,old,ent.nom||'',false).lignes>0) return;
+    if(confirm('Le N° « '+chantierTableLabel(ent)+' » n\'a plus aucune ligne.\n\nLe retirer de la table des chantiers ?')){
+      CHANTIERS=CHANTIERS.filter(function(x){return x!==ent;});
+      addHistoryEntry('Chantier retiré de la table (plus aucune ligne) : '+chantierTableLabel(ent),null,null);
+    }
+  });
+  lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  renderDashboard();
+  var manq=sel.length-nOk;
+  alert('✓ '+nOk+' prestation'+(nOk>1?'s':'')+' déplacée'+(nOk>1?'s':'')+' vers '+chantierTableLabel(c)+'.'
+    +(manq?'\n⚠ '+manq+' ligne(s) introuvable(s) — non modifiée(s).':'')
+    +'\n\nDans l\'application menuiserie, le mois en cours et le précédent se mettent à jour la nuit.'
+    +'\nPlus ancien : Maintenance → « Rapatrier le pointage — période au choix »,'
+    +'\ndu '+dateAn(new Date(sem[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(sem[sem.length-1]))+'.'
+    +'\n\n(Annulable avec ↶ Undo.)');
+}
 function togglePersonDetail(safePid){var el=document.getElementById('pdetail-'+safePid); if(el) el.style.display=(el.style.display==='none')?'':'none';}
 function toggleM12Detail(safePid){var els=document.querySelectorAll('.m12-'+safePid); els.forEach(function(el){el.style.display=(el.style.display==='none')?'':'none';});}
 function renderDashboard(){
   var el=document.getElementById('tab-dashboard'); if(!el) return;
+  MV_LINES=[]; mvSel={}; // 261027-2100 : la sélection ne survit pas à un nouveau rendu
   var agg=dashboardAggregate();
   var showProd=(dashFilter==='all'||dashFilter==='prod');
   var showBE=(dashFilter==='all'||dashFilter==='bureau');
@@ -2942,13 +3087,14 @@ function renderDashboard(){
         +'<div><span class="dash-arrow" id="ar_'+safeId+'">▸</span> <b>'+escAttr(n)+'</b>'+(C.nom?' <span style="color:#64748b;font-weight:600">'+escAttr(C.nom)+'</span>':'')+'</div>'
         +'<div class="chantier-total">'+fmtH(totDisplayed)+'</div>'
         +'</div>';
-      html+='<div id="'+safeId+'" style="display:none">'+chantierDetailHtml(C,safeId)+'</div>';
+      html+='<div id="'+safeId+'" style="display:none">'+chantierDetailHtml(C,safeId,n)+'</div>';
       html+='</div>';
     });
     html+='</div>';
   }
 
   html+='</div>';
+  html+='<div class="vb-mv-bar" id="vb-mv-bar" style="display:none"></div>';
   el.innerHTML=html;
 }
 
