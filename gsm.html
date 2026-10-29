@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<!-- gsm.html GSM V1 261029-1600 : synchro ciblée Firebase (plus d'écrasement de toute la base) -->
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -490,32 +491,138 @@ function initFirebase(){
     fbListen();
   }catch(e){console.warn('Firebase init error',e);}
 }
+// ══════════ SYNCHRO CIBLÉE AVEC FIREBASE (261029) ══════════
+// Incident du 29/10/2026 : un appareil resté ouvert depuis le matin a renvoyé
+// TOUTE sa copie (ancienne) de la base et effacé le travail des autres.
+// Désormais chaque appareil n'envoie QUE ce qu'il a lui-même changé depuis sa
+// dernière synchronisation : une journée (semaine/personne/jour) du planning, du
+// pointage, du planning B.E. ou du pointage B.E. ; les autres réglages seulement
+// s'ils ont changé ; l'Historique est FUSIONNÉ (jamais remplacé).
+var vbSynced=null;          // copie de référence : état reçu de / envoyé à Firebase
+var vbPendingRemote=null, vbPendingTimer=null;
+var VB_DAY_STORES=['planning','pointage','planningBureau','pointageBureau'];
+var VB_WHOLE_KEYS=['people','personPins','chefUsers','chantiers'];
+function vbNorm(x){
+  // Forme canonique : null / vide / undefined disparaissent (comme dans Firebase),
+  // tableaux = objets à clés numériques (Firebase convertit l'un en l'autre).
+  if(x===null||x===undefined) return undefined;
+  var t=typeof x;
+  if(t==='number') return isFinite(x)?x:undefined;
+  if(t==='string'||t==='boolean') return x;
+  if(t!=='object') return undefined;
+  var o={}, n=0, keys=Object.keys(x);
+  for(var i=0;i<keys.length;i++){ var v=vbNorm(x[keys[i]]); if(v!==undefined){ o[keys[i]]=v; n++; } }
+  return n?o:undefined;
+}
+function vbStr(x){
+  // JSON canonique (clés triées) d'une valeur déjà normalisée.
+  if(x===undefined) return '';
+  if(typeof x!=='object') return JSON.stringify(x);
+  return '{'+Object.keys(x).sort().map(function(k){return JSON.stringify(k)+':'+vbStr(x[k]);}).join(',')+'}';
+}
+function vbCanon(x){ return vbStr(vbNorm(x)); }
+function vbPlain(x){ var n=vbNorm(x); return n===undefined?null:JSON.parse(JSON.stringify(x)); }
+function vbKeyOk(k){ return k!=='' && !/[.#$\[\]\/]/.test(String(k)); }
+function vbUnion(a,b){ var s={}; Object.keys(a||{}).forEach(function(k){s[k]=1;}); Object.keys(b||{}).forEach(function(k){s[k]=1;}); return Object.keys(s); }
+function vbHistKey(h){ return h?String(h.at||'')+'|'+String(h.by||'')+'|'+String(h.text||''):''; }
+function vbHistArr(m){
+  var h=m&&m.history; if(!h) return [];
+  if(Array.isArray(h)) return h.filter(function(x){return !!x;});
+  return Object.keys(h).sort(function(a,b){return parseInt(a,10)-parseInt(b,10);}).map(function(k){return h[k];}).filter(function(x){return !!x;});
+}
+function vbLocalState(){
+  var s={planning:planning,pointage:pointage,planningBureau:planningBureau,pointageBureau:pointageBureau,
+         cColorOverride:cColorOverride,people:PERS,personPins:personPins,chefUsers:chefUsers,chantiers:CHANTIERS};
+  return s;
+}
+// Mémorise l'état courant comme référence (après réception de Firebase ou après un envoi).
+function vbMarkSynced(){
+  var s=vbLocalState(), ref={days:{},whole:{},colors:{},hist:{}};
+  VB_DAY_STORES.forEach(function(name){ ref.days[name]=JSON.parse(JSON.stringify(s[name]||{})); });
+  VB_WHOLE_KEYS.forEach(function(k){ ref.whole[k]=vbCanon(s[k]); });
+  Object.keys(s.cColorOverride||{}).forEach(function(k){ ref.colors[k]=vbCanon(s.cColorOverride[k]); });
+  vbHistArr(appMeta).forEach(function(h){ ref.hist[vbHistKey(h)]=1; });
+  vbSynced=ref;
+}
+// Journées modifiées d'un magasin : compare semaine par semaine, puis jour par jour.
+function vbDiffDays(name,cur,old,upd){
+  cur=cur||{}; old=old||{};
+  vbUnion(cur,old).forEach(function(w){
+    if(!vbKeyOk(w)) return;
+    if(vbCanon(cur[w])===vbCanon(old[w])) return;
+    var cw=cur[w]||{}, ow=old[w]||{};
+    vbUnion(cw,ow).forEach(function(pid){
+      if(!vbKeyOk(pid)) return;
+      if(vbCanon(cw[pid])===vbCanon(ow[pid])) return;
+      var cp=cw[pid]||{}, op=ow[pid]||{};
+      vbUnion(cp,op).forEach(function(di){
+        if(!vbKeyOk(di)) return;
+        if(vbCanon(cp[di])===vbCanon(op[di])) return;
+        upd[name+'/'+w+'/'+pid+'/'+di]=vbPlain(cp[di]);
+      });
+    });
+  });
+}
 function fbSave(){
-  if(!db||!fbConnected) return;
+  if(!db) return;
+  if(!vbSynced){
+    // Rien reçu de Firebase depuis l'ouverture : on n'envoie rien (sinon on pourrait
+    // renvoyer une vieille copie locale). Les données arrivent dans un instant.
+    try{ toast('⏳ Synchronisation en cours — modification non envoyée, réessayez dans un instant'); }catch(e){}
+    return;
+  }
   ignoreRemoteUntil=Date.now()+1500;
   try{
-    // IMPORTANT : update() et non set() — set() écraserait tout le nœud 'data',
-    // supprimant userRoles (comptes admin/chef), nextLineId et chantiers gérés ailleurs.
-    db.ref('data').update({
-      planning:planning,
-      pointage:pointage,
-      planningBureau:planningBureau,
-      pointageBureau:pointageBureau,
-      cColorOverride:cColorOverride,
-      people:PERS,
-      personPins:personPins,
-      chefUsers:chefUsers,
-      chantiers:CHANTIERS,
-      meta:appMeta
+    var s=vbLocalState(), upd={}, n=0;
+    VB_DAY_STORES.forEach(function(name){ vbDiffDays(name,s[name],vbSynced.days[name],upd); });
+    VB_WHOLE_KEYS.forEach(function(k){ if(vbCanon(s[k])!==vbSynced.whole[k]) upd[k]=vbPlain(s[k]); });
+    vbUnion(s.cColorOverride||{},vbSynced.colors).forEach(function(k){
+      if(!vbKeyOk(k)) return;
+      var c=vbCanon((s.cColorOverride||{})[k]); if(c!==(vbSynced.colors[k]||'')) upd['cColorOverride/'+k]=vbPlain((s.cColorOverride||{})[k]);
     });
-  }catch(e){}
+    n=Object.keys(upd).length;
+    if(n) db.ref('data').update(upd);
+    // Historique : seules les NOUVELLES lignes sont ajoutées à l'historique en ligne.
+    var neuves=vbHistArr(appMeta).filter(function(h){return !vbSynced.hist[vbHistKey(h)];});
+    if(neuves.length){
+      var plain=JSON.parse(JSON.stringify(neuves));
+      db.ref('data/meta').transaction(function(cur){
+        cur=cur||{};
+        var seen={}, out=[];
+        plain.concat(vbHistArr(cur)).forEach(function(h){var k=vbHistKey(h); if(!seen[k]){seen[k]=1; out.push(h);}});
+        out.sort(function(a,b){return String(b.at||'').localeCompare(String(a.at||''));});
+        cur.history=out.slice(0,250);
+        if(out.length){ cur.lastModifiedAt=out[0].at||cur.lastModifiedAt||null; cur.lastModifiedBy=out[0].by||cur.lastModifiedBy||''; }
+        return cur;
+      });
+    }
+    if(typeof nextLineId!=='undefined'){
+      var nl=nextLineId;
+      db.ref('data/nextLineId').transaction(function(cur){ var c=parseInt(cur,10); return (isNaN(c)||c<nl)?nl:c; });
+    }
+    vbMarkSynced();
+  }catch(e){ console.warn('Firebase save error',e); }
 }
+// Réception Firebase : pendant les 1,5 s qui suivent un envoi, la mise à jour reçue
+// n'est plus JETÉE mais appliquée juste après ce délai (sinon l'appareil restait en retard).
+function vbOnRemote(val,apply){
+  var wait=ignoreRemoteUntil-Date.now();
+  if(wait>0){
+    vbPendingRemote=val;
+    if(!vbPendingTimer) vbPendingTimer=setTimeout(function(){ vbPendingTimer=null; var v=vbPendingRemote; vbPendingRemote=null; vbOnRemote(v,apply); },wait+50);
+    return;
+  }
+  apply(val);
+  vbMarkSynced();
+}
+
 var ignoreRemoteUntil=0;
+var APP_VERSION="GSM V1 261029-1600";
 function fbListen(){
   if(!db) return;
   db.ref('data').on('value', function(snap){
-    if(Date.now()<ignoreRemoteUntil) return;
-    var val=snap.val(); if(!val) return;
+    var v0=snap.val(); if(!v0) return;
+    vbOnRemote(v0, function(val){
     if(val.planning) planning=val.planning;
     if(val.pointage) pointage=val.pointage;
     if(val.planningBureau) planningBureau=val.planningBureau; else planningBureau={};
@@ -533,6 +640,7 @@ function fbListen(){
     updateStatusBar();
     renderHistoryIfOpen();
     if(currentTab) renderCurrentTab();
+    });
   });
 }
 
@@ -1008,7 +1116,7 @@ function lsLoad(){
   }catch(e){}
 }
 function doHardReload(){
-  if(!confirm('Recharger l\'application pour récupérer la dernière version ?\n\nVos données ne seront pas perdues (elles sont sur Firebase).')) return;
+  if(!confirm('Version actuelle : '+APP_VERSION+'\n\nRecharger l\'application pour récupérer la dernière version ?\n\nVos données ne seront pas perdues (elles sont sur Firebase).')) return;
   // Try to clear all caches (service worker style)
   if('caches' in window){
     caches.keys().then(function(keys){
