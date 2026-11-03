@@ -943,7 +943,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261029-1630";
+var APP_VERSION="V1 261103-1800";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2790,10 +2790,13 @@ function dashboardAggregate(){
   function ensureP(pid){
     if(!persons[pid]) persons[pid]={
       week:0,month:0,year:0,work:0,abs:0,conges:0,m12:{},
+      // 261103 : mêmes périodes que Semaine/Mois/Année (avant : work/abs/conges = tout l'historique)
+      weekW:0,monthW:0,yearW:0,absY:0,congesY:0,
       weekProd:0,monthProd:0,yearProd:0,workProd:0,
       weekBE:0,monthBE:0,yearBE:0,workBE:0,
       byType:{},       // ventilation des heures travaillées par section (année)
-      byTypeMonth:{}   // ventilation par section ET par mois : {'YYYY-MM': {M: h, A: h, ...}}
+      byTypeMonth:{},  // ventilation par section ET par mois : {'YYYY-MM': {M: h, A: h, ...}}
+      absMonth:{}      // 261103 : absences par mois et par type : {'YYYY-MM': {C: h, V: h, ML: h, CE: h}}
     };
     return persons[pid];
   }
@@ -2846,7 +2849,10 @@ function dashboardAggregate(){
             // Selon le filtre, on remplit ou non les agrégats principaux
             if(dashFilter==='all' || dashFilter===scope){
               if(inThisWeek)P.week+=h; if(inThisMonth)P.month+=h; if(inThisYear)P.year+=h;
+              if(isAbs){ if(!P.absMonth[ym]) P.absMonth[ym]={}; P.absMonth[ym][typ]=(P.absMonth[ym][typ]||0)+h; }
               if(isAbs){ var AB=ensureA(typ); AB.total+=h; if(!AB.byPersMonth[pid]) AB.byPersMonth[pid]={}; AB.byPersMonth[pid][ym]=(AB.byPersMonth[pid][ym]||0)+h; }
+              if(!isAbs){ if(inThisWeek)P.weekW+=h; if(inThisMonth)P.monthW+=h; if(inThisYear)P.yearW+=h; }
+              else if(inThisYear){ if(typ==='V'||typ==='C') P.congesY+=h; else P.absY+=h; }
               if(typ==='V'||typ==='C') P.conges+=h;
               else if(typ==='CE'||typ==='ML') P.abs+=h;
               else { P.work+=h; if(scope==='prod') P.workProd+=h; else P.workBE+=h;
@@ -3182,6 +3188,18 @@ function mvAppliquer(){
     +'\n\n(Annulable avec ↶ Undo.)');
 }
 function togglePersonDetail(safePid){var el=document.getElementById('pdetail-'+safePid); if(el) el.style.display=(el.style.display==='none')?'':'none';}
+// 261103 : mode du tableau « 12 derniers mois » — 'tout' (absences comprises) ou 'prest' (heures prestées). Mémorisé par navigateur.
+var dashM12Mode='tout';
+try{ var _m12=localStorage.getItem('vb_m12mode_v1'); if(_m12==='tout'||_m12==='prest') dashM12Mode=_m12; }catch(e){}
+function setM12Mode(m){
+  dashM12Mode=(m==='prest')?'prest':'tout';
+  try{ localStorage.setItem('vb_m12mode_v1',dashM12Mode); }catch(e){}
+  // Garder ouvertes les ventilations dépliées
+  var ouverts={}; document.querySelectorAll('.m12-detail').forEach(function(el){ if(el.style.display!=='none'){ var c=[].slice.call(el.classList).find(function(x){return x.indexOf('m12-')===0&&x!=='m12-detail';}); if(c) ouverts[c.slice(4)]=1; } });
+  var y=window.scrollY; renderDashboard();
+  Object.keys(ouverts).forEach(function(pid){ toggleM12Detail(pid); });
+  window.scrollTo(0,y);
+}
 function toggleM12Detail(safePid){var els=document.querySelectorAll('.m12-'+safePid); els.forEach(function(el){el.style.display=(el.style.display==='none')?'':'none';});}
 function renderDashboard(){
   var el=document.getElementById('tab-dashboard'); if(!el) return;
@@ -3210,17 +3228,18 @@ function renderDashboard(){
     if(dashFilter==='bureau') return isBureauPerson(p);
     return true;
   });
-  var maxYear=1; pers.forEach(function(p){var d=agg.persons[p.id]; if(d&&d.year>maxYear)maxYear=d.year;});
-  html+='<div class="dash-box"><h3>👥 Par personne · '+filterLbl+'</h3><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Personne</th><th>Semaine</th><th>Mois</th><th>Année</th><th>Heures prestées</th><th>Absences</th><th>Congés &amp; vacances</th><th>Charge année</th></tr></thead><tbody>';
+  var prestOnly=(dashM12Mode==='prest');
+  var maxYear=1; pers.forEach(function(p){var d=agg.persons[p.id]; var y=d?(prestOnly?d.yearW:d.year):0; if(y>maxYear)maxYear=y;});
+  html+='<div class="dash-box"><h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">👥 Par personne · '+filterLbl+' <span class="vb-pm-unit"><button class="'+(dashM12Mode==='tout'?'on':'')+'" onclick="setM12Mode(\'tout\')">Toutes heures</button><button class="'+(dashM12Mode==='prest'?'on':'')+'" onclick="setM12Mode(\'prest\')">Heures prestées</button></span> <span style="font-size:11px;color:#94a3b8;font-weight:400">Année = prestées + absences + congés</span></h3><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Personne</th><th>Semaine</th><th>Mois</th><th>Année</th><th>Prestées (année)</th><th>Absences (année)</th><th>Congés &amp; vacances (année)</th><th>Charge année</th></tr></thead><tbody>';
   pers.forEach(function(p){
-    var d=agg.persons[p.id]||{week:0,month:0,year:0,work:0,abs:0,conges:0,byType:{}};
+    var d=agg.persons[p.id]||{week:0,month:0,year:0,work:0,abs:0,conges:0,byType:{},weekW:0,monthW:0,yearW:0,absY:0,congesY:0};
     var safePid=p.id.replace(/[^a-zA-Z0-9_-]/g,'_');
     html+='<tr class="dash-person-row" style="cursor:pointer" onclick="togglePersonDetail(\''+safePid+'\')" title="Cliquer pour la ventilation par section"><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+' <span style="color:#94a3b8;font-size:10px">▾</span></td>'
-      +'<td>'+fmtH(d.week)+'</td><td>'+fmtH(d.month)+'</td><td><b>'+fmtH(d.year)+'</b></td>'
-      +'<td style="color:#16a34a">'+fmtH(d.work)+'</td>'
-      +'<td style="color:#b91c1c">'+fmtH(d.abs)+'</td>'
-      +'<td style="color:#b45309">'+fmtH(d.conges)+'</td>'
-      +'<td>'+dashBar(d.year,maxYear,tcol(p.g))+'</td></tr>';
+      +'<td>'+fmtH(prestOnly?d.weekW:d.week)+'</td><td>'+fmtH(prestOnly?d.monthW:d.month)+'</td><td><b>'+fmtH(prestOnly?d.yearW:d.year)+'</b></td>'
+      +'<td style="color:#16a34a">'+fmtH(d.yearW)+'</td>'
+      +'<td style="color:#b91c1c">'+fmtH(d.absY)+'</td>'
+      +'<td style="color:#b45309">'+fmtH(d.congesY)+'</td>'
+      +'<td>'+dashBar(prestOnly?d.yearW:d.year,maxYear,tcol(p.g))+'</td></tr>';
     // Sous-ligne : ventilation annuelle par section (pastilles). Le détail par mois
     // se trouve dans le tableau « Par personne · 12 derniers mois » (clic sur le nom).
     var bt=d.byType||{};
@@ -3236,23 +3255,33 @@ function renderDashboard(){
   html+='</tbody></table></div></div>';
 
   // ── PAR PERSONNE — 12 MOIS ──
-  html+='<div class="dash-box"><h3>👥 Par personne · 12 derniers mois <span style="font-size:11px;color:#94a3b8;font-weight:400">— cliquer sur un nom pour la ventilation par section</span></h3><div class="dash-table-wrap"><table class="dash-table dash-12"><thead><tr><th>Personne</th>';
+  // 261103 : choix « Toutes heures » (absences comprises, détaillées en sous-lignes) ou « Heures prestées ».
+  html+='<div class="dash-box"><h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">👥 Par personne · 12 derniers mois <span class="vb-pm-unit"><button class="'+(dashM12Mode==='tout'?'on':'')+'" onclick="setM12Mode(\'tout\')">Toutes heures</button><button class="'+(dashM12Mode==='prest'?'on':'')+'" onclick="setM12Mode(\'prest\')">Heures prestées</button></span> <span style="font-size:11px;color:#94a3b8;font-weight:400">— cliquer sur un nom pour la ventilation par section'+(dashM12Mode==='tout'?' et les absences':'')+'</span></h3><div class="dash-table-wrap"><table class="dash-table dash-12"><thead><tr><th>Personne</th>';
   agg.months.forEach(function(mo){html+='<th>'+mo.lbl+'</th>';});
   html+='<th>Total</th></tr></thead><tbody>';
   var m12TypeOrder=['M','A','F','T','P','G','D','PL','E','GS','R','CNC'];
   pers.forEach(function(p){
     var d=agg.persons[p.id]||{m12:{},byTypeMonth:{}}; var tot=0;
     var safePid12=p.id.replace(/[^a-zA-Z0-9_-]/g,'_');
-    var btm=d.byTypeMonth||{};
+    var btm=d.byTypeMonth||{}, abm=d.absMonth||{};
     var actTypes=m12TypeOrder.filter(function(tk){return agg.months.some(function(mo){return btm[mo.key]&&btm[mo.key][tk]>0;});});
-    html+='<tr'+(actTypes.length?' style="cursor:pointer" onclick="toggleM12Detail(\''+safePid12+'\')" title="Cliquer pour la ventilation par section"':'')+'><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+(actTypes.length?' <span style="color:#94a3b8;font-size:10px">▾</span>':'')+'</td>';
-    agg.months.forEach(function(mo){var v=(d.m12&&d.m12[mo.key])||0; tot+=v; html+='<td>'+(v?fmtHShort(v):'·')+'</td>';});
+    // Absences en sous-lignes (mode « Toutes heures » seulement) : le détail retombe alors toujours sur le total.
+    var absTypes=(dashM12Mode==='tout')?['C','V','ML','CE'].filter(function(tk){return agg.months.some(function(mo){return abm[mo.key]&&abm[mo.key][tk]>0;});}):[];
+    function prestMois(ym){ var o=btm[ym]||{}, s=0; Object.keys(o).forEach(function(k){s+=o[k];}); return s; }
+    var hasDet=actTypes.length+absTypes.length;
+    html+='<tr'+(hasDet?' style="cursor:pointer" onclick="toggleM12Detail(\''+safePid12+'\')" title="Cliquer pour la ventilation par section"':'')+'><td><span class="dash-dot" style="background:'+tcol(p.g)+'"></span>'+escAttr(p.nom)+(hasDet?' <span style="color:#94a3b8;font-size:10px">▾</span>':'')+'</td>';
+    agg.months.forEach(function(mo){var v=(dashM12Mode==='prest')?prestMois(mo.key):((d.m12&&d.m12[mo.key])||0); tot+=v; html+='<td>'+(v?fmtHShort(v):'·')+'</td>';});
     html+='<td><b>'+fmtH(tot)+'</b></td></tr>';
     // Sous-lignes : une par section active, valeurs par mois
     actTypes.forEach(function(tk){
       var ti=tinfo(tk), rowTot=0, cells='';
       agg.months.forEach(function(mo){var v=(btm[mo.key]&&btm[mo.key][tk])||0; rowTot+=v; cells+='<td style="font-size:10.5px;color:#475569">'+(v?fmtHShort(v):'·')+'</td>';});
       html+='<tr class="m12-detail m12-'+safePid12+'" style="display:none;background:#f8fafc"><td style="padding-left:26px;font-size:10.5px"><span class="dash-dot" style="background:'+(ti.col||'#94a3b8')+';width:7px;height:7px"></span><span style="color:'+(ti.col||'#475569')+';font-weight:700">'+ti.lbl+'</span></td>'+cells+'<td style="font-size:10.5px;font-weight:800;color:#334155">'+fmtHShort(rowTot)+'</td></tr>';
+    });
+    absTypes.forEach(function(tk){
+      var ti=tinfo(tk), rowTot=0, cells='';
+      agg.months.forEach(function(mo){var v=(abm[mo.key]&&abm[mo.key][tk])||0; rowTot+=v; cells+='<td style="font-size:10.5px;color:#7c3aed;font-style:italic">'+(v?fmtHShort(v):'·')+'</td>';});
+      html+='<tr class="m12-detail m12-'+safePid12+'" style="display:none;background:#faf5ff"><td style="padding-left:26px;font-size:10.5px"><span class="dash-dot" style="background:#a855f7;width:7px;height:7px"></span><span style="color:#7c3aed;font-weight:700;font-style:italic">'+ti.lbl+' (abs.)</span></td>'+cells+'<td style="font-size:10.5px;font-weight:800;color:#7c3aed;font-style:italic">'+fmtHShort(rowTot)+'</td></tr>';
     });
   });
   html+='</tbody></table></div></div>';
