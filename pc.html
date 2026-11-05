@@ -943,7 +943,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261103-1800";
+var APP_VERSION="V1 261105-1230";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1142,7 +1142,7 @@ function cleanupChantiersInactifs(){
   var list=chantiersInactifs();
   if(!list.length){ toast('Aucun chantier inactif depuis plus de 3 mois 👍'); return; }
   var lines=list.map(function(c){
-    var d=c.last?('dernière activité : semaine du '+fmtD(new Date(c.last),true)):'jamais utilisé';
+    var d=c.last?('dernière activité : semaine du '+fmtD(lundiDeCle(c.last),true)):'jamais utilisé';
     return '• '+chantierTableLabel(c)+' ('+d+')';
   });
   if(!confirm('Supprimer '+list.length+' chantier'+(list.length>1?'s':'')+' sans heures depuis plus de 3 mois ?\n\n'+lines.join('\n')+'\n\nLes tâches historiques déjà encodées ne sont pas modifiées — seul le référentiel change.')) return;
@@ -1232,7 +1232,18 @@ function renommerChantier(ancien, nouveau, nom, appliquer){
   }
   return res;
 }
-function finDeSemaine(wk){ var d=new Date(wk+'T00:00:00'); d.setDate(d.getDate()+6); return d; }
+// 261105 : une clé de semaine (« AAAA-MM-JJ ») est le toISOString() du lundi 00:00 LOCAL, donc,
+// en Belgique (UTC+1/+2), la date du DIMANCHE qui précède. new Date(cle) la lisait comme ce dimanche :
+// tous les jours du Dashboard étaient comptés la VEILLE (ex. mercredi 1/07 attribué au 30/06 → juin).
+// lundiDeCle() rend le vrai lundi (date locale), que la clé soit un dimanche (cas normal) ou un lundi.
+function lundiDeCle(wk){
+  var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(wk||''));
+  if(!m){ var x=new Date(wk); return x; }
+  var d=new Date(parseInt(m[1],10),parseInt(m[2],10)-1,parseInt(m[3],10));
+  if(d.getDay()===0) d.setDate(d.getDate()+1);
+  return d;
+}
+function finDeSemaine(wk){ var d=lundiDeCle(wk); d.setDate(d.getDate()+5); return d; }
 function dateAn(d){ return d.toLocaleDateString('fr-BE',{day:'2-digit',month:'2-digit',year:'numeric'}); }
 function validerModifChantier(ancien){
   if(!peutModifierChantier(ancien)){ toast('🔒 Réservé à un administrateur, sur PC'); return; }
@@ -1250,7 +1261,7 @@ function validerModifChantier(ancien){
   var txt='Remplacer PARTOUT\n\n   '+avant+'\npar\n   '+chantierTableLabel({num:nouveau,nom:nom})+' ?\n\n'
     +(n.lignes?(n.lignes+' ligne'+(n.lignes>1?'s':'')+' de planning et de pointage, sur '+sem.length+' semaine'+(sem.length>1?'s':'')+', seront modifiées.')
              :'Aucune ligne de planning ni de pointage ne porte ce N° : seule la table change.')
-    +(ancien!==nouveau && hs.length?'\n\nDes heures sont pointées du '+dateAn(new Date(hs[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(hs[hs.length-1]))+'.':'');
+    +(ancien!==nouveau && hs.length?'\n\nDes heures sont pointées du '+dateAn(lundiDeCle(hs[0]))+' au '+dateAn(finDeSemaine(hs[hs.length-1]))+'.':'');
   if(!confirm(txt)) return;
   var r=renommerChantier(ancien, nouveau, nom, true);
   addHistoryEntry('Chantier modifié : '+avant+' → '+chantierTableLabel({num:nouveau,nom:nom})+' ('+r.lignes+' ligne'+(r.lignes>1?'s':'')+')',null,null);
@@ -1260,7 +1271,7 @@ function validerModifChantier(ancien){
   if(ancien!==nouveau && hs.length){
     alert('✓ Chantier '+ancien+' devenu '+nouveau+'.\n\nPour que ces heures passent aussi sur le N° '+nouveau+' dans l\'application menuiserie :\n'
       +'Maintenance → « Rapatrier le pointage — période au choix » → Tout l\'historique\n'
-      +'(ou Comparatif heures → « Rapatrier le pointage », du '+dateAn(new Date(hs[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(hs[hs.length-1]))+').\n'
+      +'(ou Comparatif heures → « Rapatrier le pointage », du '+dateAn(lundiDeCle(hs[0]))+' au '+dateAn(finDeSemaine(hs[hs.length-1]))+').\n'
       +'Le mois en cours et le précédent se font d\'eux-mêmes la nuit.\n\n'
       +'(Les factures, commandes et devis restent sur l\'ancien N° dans l\'application menuiserie.)');
   } else {
@@ -2095,7 +2106,7 @@ function renderChantiers(){
       var lk=lastMap[c.num.toLowerCase()];
       var actLbl, actStyle='color:#64748b';
       if(isAbsenceNum(c.num)){ actLbl='Code absence'; actStyle='color:#7c3aed;font-weight:600'; }
-      else if(lk){ actLbl='Semaine du '+fmtD(new Date(lk),true); }
+      else if(lk){ actLbl='Semaine du '+fmtD(lundiDeCle(lk),true); }
       else { actLbl='Jamais utilisé'; }
       var inactifBadge=inactifNums[c.num]?' <span style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:99px;padding:1px 8px;font-size:10px;font-weight:700">+3 mois</span>':'';
       var safeNum=escAttr(c.num).replace(/'/g,"\\'");
@@ -2810,7 +2821,7 @@ function dashboardAggregate(){
   function scanStore(store, scope){
     // scope: 'prod' ou 'bureau'
     Object.keys(store||{}).forEach(function(wk){
-      var mon=new Date(wk); if(isNaN(mon)) return;
+      var mon=lundiDeCle(wk); if(isNaN(mon)) return;
       var inThisWeek=(wk===curWeekKey);
       var wkData=store[wk]||{};
       Object.keys(wkData).forEach(function(pid){
@@ -3148,7 +3159,7 @@ function mvAppliquer(){
     +(isAbsenceNum(c.num)?'\n\n⚠ Ces heures deviennent des ABSENCES ('+(c.nom||c.num)+') : elles ne comptent plus comme heures prestées.':'')
     +'\n\nLe LOT est gardé s\'il existe dans '+c.num+', sinon la ligne passe « sans LOT ».'
     +'\nLe planning et le pointage de ces lignes sont modifiés. Heures, personne, date et poste ne changent pas.'
-    +'\nPériode : du '+dateAn(new Date(sem[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(sem[sem.length-1]))+'.';
+    +'\nPériode : du '+dateAn(lundiDeCle(sem[0]))+' au '+dateAn(finDeSemaine(sem[sem.length-1]))+'.';
   if(!confirm(txt)) return;
   pushUndo('Déplacement de '+sel.length+' prestation'+(sel.length>1?'s':'')+' → '+c.num);
   var nOk=0, nPt=0;
@@ -3184,7 +3195,7 @@ function mvAppliquer(){
     +(manq?'\n⚠ '+manq+' ligne(s) introuvable(s) — non modifiée(s).':'')
     +'\n\nDans l\'application menuiserie, le mois en cours et le précédent se mettent à jour la nuit.'
     +'\nPlus ancien : Maintenance → « Rapatrier le pointage — période au choix »,'
-    +'\ndu '+dateAn(new Date(sem[0]+'T00:00:00'))+' au '+dateAn(finDeSemaine(sem[sem.length-1]))+'.'
+    +'\ndu '+dateAn(lundiDeCle(sem[0]))+' au '+dateAn(finDeSemaine(sem[sem.length-1]))+'.'
     +'\n\n(Annulable avec ↶ Undo.)');
 }
 function togglePersonDetail(safePid){var el=document.getElementById('pdetail-'+safePid); if(el) el.style.display=(el.style.display==='none')?'':'none';}
