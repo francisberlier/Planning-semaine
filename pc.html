@@ -943,7 +943,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261105-1230";
+var APP_VERSION="V1 261106-1845";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2081,10 +2081,9 @@ function renderChantiers(){
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
     +'<input id="new-ch-num" placeholder="N° (ex: 9234)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;width:130px;font-size:14px"/>'
     +'<input id="new-ch-nom" placeholder="Client / libellé (ex: Notalex)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;flex:1;min-width:200px;font-size:14px"/>'
-    +'<input id="new-ch-lots" placeholder="LOTs, séparés par des virgules (ex: 01, 02, Lockers)" style="padding:9px 12px;border:1px solid var(--bd);border-radius:8px;flex:1;min-width:240px;font-size:14px"/>'
     +'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 18px" onclick="submitNewChantier()">Ajouter</button>'
     +'</div>'
-    +'<div style="margin-top:6px;font-size:11px;color:#94a3b8">Chaque LOT : 12 caractères max. Les LOTs restent modifiables après création (colonne LOTs ci-dessous).</div>'
+    +'<div style="margin-top:6px;font-size:11px;color:#94a3b8">Les LOT d\'un chantier viennent de VBS : écran Production, bouton « ⇪ Transférer au pointage ».</div>'
     +'<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
     +'<button class="mini-btn" style="background:#e0f2fe;border:1px solid #7dd3fc;color:#075985;font-weight:700" onclick="importChantiersFromPlanning()">⇊ Importer les chantiers du planning existant</button>'
     +'<button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700" onclick="cleanupChantiersInactifs()">🧹 Supprimer les inactifs (+3 mois)'+(inactifs.length?' — '+inactifs.length:'')+'</button>'
@@ -2119,7 +2118,8 @@ function renderChantiers(){
           var safeLot=escAttr(l).replace(/'/g,"\\'");
           return '<span style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:700;margin:1px 3px 1px 0">'+escAttr(l)+'<a style="cursor:pointer;color:#93c5fd;font-weight:900" title="Retirer ce LOT" onclick="removeLotFromChantier(\''+safeNum+'\',\''+safeLot+'\')">×</a></span>';
         }).join('');
-        lotsCell+='<span style="display:inline-flex;align-items:center;gap:3px;margin-left:'+(lots.length?'6px':'0')+'"><input id="lot-add-'+c.num.replace(/[^a-zA-Z0-9_-]/g,'_')+'" maxlength="12" placeholder="+ LOT" style="width:78px;padding:3px 7px;border:1px dashed var(--bd);border-radius:8px;font-size:11px" onkeydown="if(event.key===\'Enter\'){addLotToChantier(\''+safeNum+'\',this.value);}"/><button class="mini-btn" style="padding:3px 9px;font-size:11px;font-weight:800" onclick="addLotToChantier(\''+safeNum+'\',document.getElementById(\'lot-add-'+c.num.replace(/[^a-zA-Z0-9_-]/g,'_')+'\').value)">+</button></span>';
+        // V1 261106 - plus d'ajout libre de LOT ici : les codes viennent de
+        // VBS (Production > « Transferer au pointage »). Le retrait (×) reste.
       }
       html+='<tr><td><b>'+escAttr(c.num)+'</b></td><td>'+escAttr(c.nom||'')+'</td><td>'+lotsCell+'</td><td style="'+actStyle+';font-size:12px">'+actLbl+inactifBadge+'</td><td style="white-space:nowrap">'
         +(peutModifierChantier(c.num)?'<button class="mini-btn" style="color:#075985;border:1px solid #7dd3fc;background:#e0f2fe;font-weight:700;margin-right:4px" title="Changer le N° ou le libellé, partout (admin, sur PC)" onclick="ouvrirModifChantier(\''+safeNum+'\')">✏ Modifier</button>':'')
@@ -2461,7 +2461,9 @@ function lotFieldHtml(obj,disabled,onchangeAttr,addBtnAttr){
   if(disabled) return '<input placeholder="LOT" disabled value=""/>';
   var lots=chantierLots(obj.num);
   var cur=String(obj.mbl||'').trim();
-  var btn=addBtnAttr?('<button type="button" class="vb-lot-add" onclick="'+addBtnAttr+'" title="Créer un LOT pour ce chantier">＋ LOT</button>'):'';
+  // V1 261106 - plus de creation de LOT depuis l'editeur : les codes
+  // viennent de VBS (« Transferer au pointage »).
+  var btn='';
   if(!lots.length){
     // Pas de LOTs définis pour ce chantier : saisie libre (comportement historique)
     return '<input placeholder="LOT" maxlength="40" value="'+escAttr(obj.mbl||'')+'" onchange="'+onchangeAttr+'"/>'+btn;
