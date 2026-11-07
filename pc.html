@@ -106,6 +106,9 @@ input,select{font-size:14px}
 .task-mini:last-child{margin-bottom:0}
 .task-mini .tm-wrap{display:flex;flex-direction:column;justify-content:center;min-width:0;width:100%}
 .task-mini .tm-main{display:block;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 261107-2045 : lettre du type de tache (M, A, F, T, P, MG...) en bas a droite du bloc */
+.task-mini.has-tag{position:relative}
+.task-mini .tm-tag{position:absolute;right:4px;bottom:2px;font-size:8.5px;font-weight:800;opacity:.72;letter-spacing:.2px;pointer-events:none}
 .day-gap{border:1px dashed #dbe3ee;border-radius:8px;background:repeating-linear-gradient(-45deg,#f8fafc,#f8fafc 8px,#f1f5f9 8px,#f1f5f9 16px)}
 .task-empty{font-size:10px;color:#94a3b8;font-style:italic;padding:6px 0}
 .top-actions{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;flex-wrap:wrap}
@@ -943,7 +946,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261106-1845";
+var APP_VERSION="V1 261107-2045";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2156,12 +2159,20 @@ function taskMiniHtml(t){
   var c=taskColor(t), txt=taskDisplayLabel(t,true);
   return '<div class="task-mini" style="background:'+c.bg+';color:'+c.fg+';border-color:'+c.brd+'"><div class="tm-wrap"><b class="tm-main">'+txt+'</b></div></div>';
 }
+// 261107-2045 : lettre du type de tache affichee en bas a droite du bloc planning.
+// Les absences (Chomage, Vacances, Conge, Malade, Bureau) gardent leur libelle : pas de lettre.
+var TYPE_TAG={M:'M',A:'A',F:'F',T:'T',P:'P',G:'MG',D:'D',PL:'PL',E:'E',GS:'GS',R:'R',CNC:'CNC'};
+function typeTagHtml(t){
+  var g=TYPE_TAG[String((t&&t.type)||'')]||'';
+  return g?'<span class="tm-tag">'+g+'</span>':'';
+}
 function taskMiniProportionalHtml(t,pid,di,taskIndex){
   var c=taskColor(t), txt=taskDisplayLabel(t,true);
+  var tag=typeTagHtml(t);
   var h=Math.max(0.25,parseFloat(t.h)||0);
   var hpx=Math.max(30,Math.round(h*10)+22); // hauteur compacte : 22px de base + 10px/h, min 30px
-  var cls='task-mini'+(sameClipboardSource(pid,di,t.id)?' task-clip-src':'');
-  return '<div class="'+cls+'" draggable="true" onclick="return handleTaskBlockClick(event,\''+pid+'\','+di+','+taskIndex+')" ondragstart="return handleTaskDragStart(event,\''+pid+'\','+di+','+taskIndex+')" ondragend="return handleTaskDragEnd(event)" style="background:'+c.bg+';color:'+c.fg+';border-color:'+c.brd+';height:'+hpx+'px"><div class="tm-wrap"><b class="tm-main">'+txt+'</b></div></div>';
+  var cls='task-mini'+(tag?' has-tag':'')+(sameClipboardSource(pid,di,t.id)?' task-clip-src':'');
+  return '<div class="'+cls+'" draggable="true" onclick="return handleTaskBlockClick(event,\''+pid+'\','+di+','+taskIndex+')" ondragstart="return handleTaskDragStart(event,\''+pid+'\','+di+','+taskIndex+')" ondragend="return handleTaskDragEnd(event)" style="background:'+c.bg+';color:'+c.fg+';border-color:'+c.brd+';height:'+hpx+'px"><div class="tm-wrap"><b class="tm-main">'+txt+'</b></div>'+tag+'</div>';
 }
 function sameClipboardSource(pid,di,taskId){
   return !!(dayClipboard&&dayClipboard.source&&dayClipboard.source.pid===pid&&parseInt(dayClipboard.source.di,10)===parseInt(di,10)&&dayClipboard.source.wk===wkKey()&&(taskId==null||dayClipboard.source.taskId===taskId));
