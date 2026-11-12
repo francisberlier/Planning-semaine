@@ -617,7 +617,7 @@ function vbOnRemote(val,apply){
 }
 
 var ignoreRemoteUntil=0;
-var APP_VERSION="GSM V1 261029-1600";
+var APP_VERSION="GSM V1 261112-1930";
 function fbListen(){
   if(!db) return;
   db.ref('data').on('value', function(snap){
@@ -634,6 +634,7 @@ function fbListen(){
     if(val.chefUsers) chefUsers=val.chefUsers;
     else if(val.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(val.chefPin)||DEFAULT_CHEF_PIN}];
     if(val.chantiers) CHANTIERS=normalizeChantiersList(val.chantiers);
+    reglages=(val.reglages&&typeof val.reglages==='object'&&!Array.isArray(val.reglages))?val.reglages:{};
     if(val.meta) appMeta=ensureMeta(val.meta);
     migrateState();
     lsSave();
@@ -795,6 +796,8 @@ function officeColorPickerHtml(i,t){
 var role=null, userId=null, loginPin='', loginSelectedId=null;
 var wkMon=null, currentTab='';
 var planning={}, pointage={}, planningBureau={}, pointageBureau={}, legacyExtraPointage={}, cColorOverride={}, personPins={}, chefUsers=[], appMeta={lastModifiedAt:null,lastModifiedBy:'',history:[]};
+// 261112-1830 : réglages partagés (data/reglages), LUS seulement — ils se changent sur le PC.
+var reglages={};
 // Contexte planning actif : 'production' ou 'bureau'
 var currentPlanningContext='production';
 function isBureauContext(){return currentPlanningContext==='bureau';}
@@ -955,7 +958,7 @@ function applyChantierTableOption(pid,di,idx,val){
   day.extras[idx].num=c.num||'';
   day.extras[idx].nom=c.nom||'';
   day.pointed=true;
-  savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day));
+  savePointageDay(pid,di,day,'Sélection chantier ajouté : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day));
   renderPointage();
 }
 function weekChantierCatalog(){
@@ -1188,7 +1191,7 @@ function setDayTasks(pid,di,tasks,opts){
   if(tasks.length) P[w][pid][di]={tasks:tasks}; else delete P[w][pid][di];
   cleanupPlanningPath(w,pid,di);
   syncPointageDay(pid,di,true);
-  addHistoryEntry((isBureauContext()?'Planning B.E. : ':'Planning : ')+pinfo(pid).nom+' — '+DAYS[di]+' → '+(tasks.length?tasks.map(taskDesc).join(' / '):'vide'), prev, tasks);
+  addHistoryEntry((opts.auto?'Report automatique → ':'')+(isBureauContext()?'Planning B.E. : ':'Planning : ')+pinfo(pid).nom+' — '+DAYS[di]+' → '+(tasks.length?tasks.map(taskDesc).join(' / '):'vide'), prev, tasks);
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
   return true;
 }
@@ -1268,20 +1271,34 @@ function savePointageDay(pid,di,day,historyText,before,after){
   PT[w][pid][di]=day;
   if(historyText) addHistoryEntry(historyText,before,after);
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  planifierReportAuto(pid,di);   // 261112-1830 : Bureau d'étude, si le réglage est activé
 }
 // ── SYNCHRO POINTAGE → PLANNING (Option C) ───────────────────
 function pointageDayToTasks(pid,di){
   var day=getPointageDay(pid,di); var tasks=[];
   var existingTaskMap={};
-  getDayTasks(pid,di).forEach(function(t){if(t.id) existingTaskMap[t.id]=t;});
+  var planDuJour=getDayTasks(pid,di);
+  planDuJour.forEach(function(t){if(t.id) existingTaskMap[t.id]=t;});
+  // Tâches issues des lignes pointées, rangées par tâche du planning.
+  var parTache={}, sansTache=[];
   (day.items||[]).forEach(function(it){
     if(it.hidden) return; // les masqués ne sont jamais reportés au planning
     var h=roundQuarter(it.h); if(h<=0) return;
     var colorIdx=null;
     if(it.num && cColorOverride[it.num]!==undefined) colorIdx=cColorOverride[it.num];
     else if(existingTaskMap[it.taskId] && existingTaskMap[it.taskId].colorIdx!=null) colorIdx=existingTaskMap[it.taskId].colorIdx;
-    tasks.push(sanitizeTask({id:it.taskId||undefined,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx}));
+    var tk=sanitizeTask({id:it.taskId||undefined,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx});
+    if(it.taskId && existingTaskMap[it.taskId] && !parTache[it.taskId]) parTache[it.taskId]=tk; else sansTache.push(tk);
   });
+  // 261112-1830 : LES ABSENCES DU PLANNING SONT CONSERVÉES. Congé, vacances, maladie, chômage, bureau
+  // (types sans chantier) n'ont pas de ligne au pointage : le report, qui remplace la journée du
+  // planning par le pointage, les effaçait. On reprend la journée du planning dans son ordre : une
+  // absence reste telle quelle, une tâche de chantier prend ce qui a été pointé. (Comme pc.html.)
+  planDuJour.forEach(function(t){
+    if(NOCH[t.type]) tasks.push(t);
+    else if(parTache[t.id]) tasks.push(parTache[t.id]);
+  });
+  sansTache.forEach(function(tk){tasks.push(tk);});
   var dft=defaultTypeForPerson(pid);
   (day.extras||[]).forEach(function(it){
     var h=roundQuarter(it.h); if(h<=0) return;
@@ -1290,25 +1307,127 @@ function pointageDayToTasks(pid,di){
   });
   return tasks;
 }
+// Un chantier imprévu est « complet » (reportable) s'il a des heures et un chantier.
+function imprevuComplet(it){ return !!(it && roundQuarter(it.h)>0 && (String(it.num||'').trim()||String(it.nom||'').trim())); }
 function applyPointageToPlanning(pid,di,opts){
   opts=opts||{};
   var day=getPointageDay(pid,di);
   if(!day) return false;
   if(!opts.force && !day.pointed) return false;
+  // 261112-1900 : le pointage est d'abord recalé sur le planning du jour, comme le fait l'écran à
+  // l'affichage. Sans cela, une tâche du planning qui n'avait pas encore sa ligne au pointage (ajoutée
+  // par le rattrapage, ou depuis un autre appareil) était effacée du planning par le report.
+  syncPointageDay(pid,di,true);
   var tasks=pointageDayToTasks(pid,di);
-  var changed=setDayTasks(pid,di,tasks,{skipUndo:false,undoLabel:'Synchro pointage → planning'});
+  var changed=setDayTasks(pid,di,tasks,{skipUndo:!!opts.auto,auto:!!opts.auto,undoLabel:'Synchro pointage → planning'});
   if(changed){
     var w=wkKey();
     var PT=activePointageStore();
     if(PT[w] && PT[w][pid] && PT[w][pid][di] && (PT[w][pid][di].extras||[]).length){
-      PT[w][pid][di].extras=[];
+      // 261112-1830 : en report automatique, une ligne d'imprévu encore incomplète (0 h, ou chantier
+      // pas encore choisi) est en cours de saisie : elle n'a pas été reportée, on la laisse.
+      PT[w][pid][di].extras=opts.auto?(PT[w][pid][di].extras||[]).filter(function(it){return it && !imprevuComplet(it);}):[];
     }
   }
   return changed;
 }
+
+// ══════════ 261112-1830 : REPORT AUTOMATIQUE (BUREAU D'ÉTUDE) ET BOUTONS ORANGE / VERT ══════════
+// Même mécanique que pc.html. Le réglage (data/reglages/reportAutoBE) se change sur le PC, dans
+// Paramètres ; le GSM le lit seulement et ne l'écrit jamais.
+function reportAutoBE(){ return !!(reglages && reglages.reportAutoBE); }
+var AUTO_REPORT_DELAI=4000;       // ms après la dernière saisie
+var AUTO_REPORT_PATIENCE=12000;   // ms sans geste : on reporte même si un champ garde le curseur
+var autoReportJobs={};            // 'semaine|personne|jour' -> {mon, pid, di, t}
+var vbDerniereActivite=Date.now();
+['keydown','mousedown','touchstart','input'].forEach(function(ev){
+  document.addEventListener(ev,function(){ vbDerniereActivite=Date.now(); },true);
+});
+function saisieEnCoursPointage(){
+  // Le pavé numérique est ouvert : la personne est en train d'encoder des heures.
+  if(typeof numPadState!=='undefined' && numPadState) return true;
+  var a=document.activeElement; if(!a || !a.tagName) return false;
+  var tag=a.tagName.toUpperCase();
+  if(tag!=='INPUT' && tag!=='SELECT' && tag!=='TEXTAREA') return false;
+  return !!(a.closest && a.closest('#tab-pointage,#tab-pointage_be'));
+}
+function planifierReportAuto(pid,di){
+  if(!reportAutoBE() || !isBureauContext() || !wkMon) return;
+  var cle=wkKey()+'|'+pid+'|'+di;
+  var job=autoReportJobs[cle]||{};
+  if(job.t) clearTimeout(job.t);
+  job.mon=new Date(wkMon.getTime()); job.pid=pid; job.di=parseInt(di,10);
+  job.t=setTimeout(function(){ executerReportAuto(cle,false); }, AUTO_REPORT_DELAI);
+  autoReportJobs[cle]=job;
+}
+function executerReportAuto(cle,sansAttendre){
+  var job=autoReportJobs[cle]; if(!job) return;
+  if(job.t){ clearTimeout(job.t); job.t=null; }
+  // On n'interrompt pas quelqu'un qui encode : le report redessine l'écran. Le pavé numérique ouvert
+  // bloque toujours ; un champ qui garde le curseur ne bloque que tant que la personne est active.
+  var pave=(typeof numPadState!=='undefined' && !!numPadState);
+  if(!sansAttendre && (pave || (saisieEnCoursPointage() && (Date.now()-vbDerniereActivite)<AUTO_REPORT_PATIENCE))){
+    job.t=setTimeout(function(){ executerReportAuto(cle,false); }, 1500);
+    return;
+  }
+  delete autoReportJobs[cle];
+  if(!reportAutoBE()) return;
+  // Le report se fait sur la semaine et le périmètre de la SAISIE, même si l'écran a changé depuis.
+  var savMon=wkMon, savCtx=currentPlanningContext, changed=false;
+  try{
+    wkMon=job.mon; currentPlanningContext='bureau';
+    if(!(typeof readOnlyHere==='function' && readOnlyHere())) changed=applyPointageToPlanning(job.pid,job.di,{force:true,auto:true});
+  }catch(e){ console.warn('Report automatique',e); }
+  finally{ wkMon=savMon; currentPlanningContext=savCtx; }
+  if(changed){
+    // applyPointageToPlanning retire les imprévus reportés APRÈS l'enregistrement fait par setDayTasks.
+    lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+    focusedExtraField=null;     // l'écran DOIT être redessiné : les lignes ont changé de place
+    if(currentTab==='planning'||currentTab==='planning_be') renderPlanning();
+    if(currentTab==='pointage'||currentTab==='pointage_be') renderPointage();
+    if(currentTab==='myplan') renderMyPlan();
+  }
+}
+// Fermeture ou mise en arrière-plan : on n'attend pas les 4 secondes.
+function viderReportsAuto(){ Object.keys(autoReportJobs).forEach(function(cle){ executerReportAuto(cle,true); }); }
+window.addEventListener('pagehide',viderReportsAuto);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') viderReportsAuto(); });
+
+// ── Boutons « Reporter » : ORANGE s'il reste quelque chose à reporter, VERT si le planning est à jour.
+var BTN_VERT='background:#dcfce7;border:1px solid #86efac;color:#166534';
+var BTN_ORANGE='background:#ffedd5;border:1px solid #fb923c;color:#9a3412';
+function pointageAReporter(pid,di){
+  var day=getPointageDay(pid,di); if(!day) return false;
+  var ex=day.extras||[];
+  for(var i=0;i<ex.length;i++){ if(imprevuComplet(ex[i])) return true; }
+  var plan={}, absences={};
+  getDayTasks(pid,di).forEach(function(t){ if(NOCH[t.type]) absences[t.id]=1; else plan[t.id]=t; });
+  var its=day.items||[];
+  for(var j=0;j<its.length;j++){
+    var it=its[j]; if(!it) continue;
+    // 261112-1900 : ancienne ligne miroir d'une absence du planning (congé, maladie…). L'absence reste
+    // au planning telle quelle : il n'y a rien à reporter, le bouton ne doit pas être orange pour elle.
+    if(it.taskId && absences[it.taskId]) continue;
+    var t=it.taskId?plan[it.taskId]:null;
+    var h=it.hidden?0:roundQuarter(it.h);
+    if(!t){ if(h>0) return true; continue; }
+    if(h!==roundQuarter(t.h)) return true;                     // heures pointées ≠ planning (ou ligne masquée / à 0 h)
+    if((it.type||t.type)!==t.type) return true;                // section changée au pointage
+    if(String(it.mbl||'').trim()!==String(t.mbl||'').trim()) return true;   // LOT changé au pointage
+  }
+  return false;
+}
+function pointageSemaineAReporter(pid){
+  for(var di=0;di<6;di++){ if(pointageAReporter(pid,di)) return true; }
+  return false;
+}
 function reportDayToPlanning(pid,di){
   if(!canEditPlanning()){ toast('Action réservée aux chefs et au Bureau d\'étude'); return; }
   var changed=applyPointageToPlanning(pid,di,{force:true});
+  // 261112-1830 (correctif 261005 de pc.html, manquant ici) : applyPointageToPlanning retire les
+  // imprévus APRÈS l'enregistrement fait par setDayTasks. Sans cet enregistrement, ils restaient en
+  // ligne après le report et les heures existaient deux fois (au planning et au pointage).
+  if(changed){ lsSave(); fbSave(); renderHistoryIfOpen(); }
   if((currentTab==='planning'||currentTab==='planning_be')) renderPlanning();
   if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
   if(currentTab==='myplan') renderMyPlan();
@@ -1343,7 +1462,7 @@ function resyncPointageDayFromPlanning(pid,di){
 }
 function resyncPointagePerson(pid){
   if(!canEditPlanning()){ toast('Action réservée aux chefs et au Bureau d\'étude'); return; }
-  if(!confirm('Resynchroniser le pointage de '+pinfo(pid).nom+' depuis le planning ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages seront effacés et remplacés par les valeurs du planning.')) return;
+  if(!confirm('Resynchroniser le pointage de '+pinfo(pid).nom+' depuis le planning ?\n\nLes heures pointées, remarques, chantiers ajoutés et masquages seront effacés et remplacés par les valeurs du planning.')) return;
   var n=0; for(var di=0; di<6; di++) n+=resyncPointageDayFromPlanning(pid,di);
   lsSave(); fbSave(); updateStatusBar();
   if((currentTab==='pointage'||currentTab==='pointage_be')) renderPointage();
@@ -1900,7 +2019,7 @@ function pointageDetailHtml(pid){
   var reportLbl=isBureauContext()?'✓ Valider mon pointage → planning Bureau':'✓ Valider mon pointage → planning';
   var goPlanningTab=isBureauContext()?'planning_be':'planning';
   var html='<div class="pointage-wrap"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div>'+(canEditPlanning()?'<div class="person-actions">'+(isManager()?'<button class="mini-btn" onclick="showTab(\'personnel\')">Changer</button>':'')+'<button class="mini-btn" onclick="showTab(\''+goPlanningTab+'\')">Voir planning</button></div>':'')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div>';
-  html+=canEditPlanning()?('<div style="padding:4px 0 10px"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button><button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:10px 16px;width:100%;margin-top:6px" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync depuis planning</button></div>'):'';
+  html+=canEditPlanning()?('<div style="padding:4px 0 10px"><button class="mini-btn" style="'+(pointageSemaineAReporter(pid)?BTN_ORANGE:BTN_VERT)+';font-weight:800;padding:10px 16px;width:100%" onclick="validatePointagePerson(\''+pid+'\')">'+(pointageSemaineAReporter(pid)?reportLbl.replace('✓','⚠'):reportLbl)+'</button><button class="mini-btn" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-weight:700;padding:10px 16px;width:100%;margin-top:6px" onclick="resyncPointagePerson(\''+pid+'\')">↻ Resync depuis planning</button></div>'):'';
   var has=false;
   // Types éligibles au contexte pour le menu déroulant Section
   function typeSelectHtml(curType,onchangeAttr){
@@ -1958,7 +2077,7 @@ function pointageDetailHtml(pid){
         +'<button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;padding:8px 14px;font-weight:600" onclick="removeExtraTask(\''+pid+'\','+di+','+idx+')">🗑️ Supprimer chantier</button>'
         +'</div>';
     });
-    rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button>'+(canEditPlanning()?'<button onclick="reportDayToPlanning(\''+pid+'\','+di+')" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700">✓ Reporter ce jour au planning</button>':'')+'</div>';
+    rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Ajouter un chantier</button>'+(canEditPlanning()?'<button onclick="reportDayToPlanning(\''+pid+'\','+di+')" style="'+(pointageAReporter(pid,di)?BTN_ORANGE:BTN_VERT)+';font-weight:700">'+(pointageAReporter(pid,di)?'⚠':'✓')+' Reporter ce jour au planning</button>':'')+'</div>';
     var hiddenBanner=hiddenCount?'<button class="hidden-banner" onclick="restoreHiddenItems(\''+pid+'\','+di+')" title="Restaurer">+ '+hiddenCount+' chantier'+(hiddenCount>1?'s':'')+' masqué'+(hiddenCount>1?'s':'')+'</button>':'';
     var ptAbs=pointageDayAbsence(pid,di);
     html+='<div class="pt-day"><div class="pt-day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+hiddenBanner+'<span class="r">'+fmtH(pointageDayTotal(pid,di))+(ptAbs>0?' +'+fmtHShort(ptAbs)+' abs':'')+'</span></div>'+(count?rows:'<div class="empty-block">Aucune tâche planifiée</div>'+rows)+'</div>';
@@ -1972,8 +2091,8 @@ function adjustPointage(pid,di,idx,isExtra,delta){
   savePointageDay(pid,di,day,'Pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day);
   forceRenderPointage();
 }
-function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({type:defaultTypeForPerson(pid),num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
-function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({type:defaultTypeForPerson(pid),num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier au pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier ajouté : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function setPointageItemField(pid,di,idx,isExtra,field,value){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
   var before=clone(day);
@@ -1999,7 +2118,7 @@ function restoreHiddenItems(pid,di){
   savePointageDay(pid,di,day,'Restauration chantiers : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
 }
 function setExtraField(pid,di,idx,f,v){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; day.extras[idx][f]=v; day.pointed=true; savePointageDay(pid,di,day,null);}
-function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; day.pointed=true; savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
+function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; day.pointed=true; savePointageDay(pid,di,day,'Sélection chantier ajouté : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
 function openHoursPad(pid,di,idx,isExtra){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
   openNumPad({title:'Encoder la durée',mode:'hours',value:String(arr[idx].h||0),onSave:function(v){var d=getPointageDay(pid,di), a=isExtra?d.extras:d.items; if(!a[idx]) return; var before=clone(d); a[idx].h=Math.max(0,roundQuarter(parseFloat(String(v).replace(',', '.'))||0)); d.pointed=true; savePointageDay(pid,di,d,'Encodage durée : '+pinfo(pid).nom+' — '+DAYS[di],before,d); renderPointage();}});
@@ -2199,7 +2318,7 @@ function doSaveJSON(){var data={version:8,savedAt:new Date().toISOString(),plann
 function doLoadJSON(input){var file=input.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(ev){try{var d=JSON.parse(ev.target.result); if(d.planning) planning=d.planning; if(d.pointage) pointage=d.pointage; if(d.extraPointage) legacyExtraPointage=d.extraPointage; if(d.cColorOverride) cColorOverride=d.cColorOverride; if(d.people) PERS=d.people; if(d.personPins) personPins=d.personPins; if(d.chefUsers) chefUsers=d.chefUsers; else if(d.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(d.chefPin)||DEFAULT_CHEF_PIN}]; if(d.meta) appMeta=ensureMeta(d.meta); migrateState(); lsSave(); fbSave(); renderCurrentTab(); updateStatusBar(); toast('Sauvegarde chargée');}catch(e){toast('Fichier invalide');}}; r.readAsText(file); input.value='';}
 function doExportCSV(){
   var rows=[['Semaine','Personne','Jour','Date','Type','N Chantier','Client','LOT','Heures prévues','Heures pointées','Nature']];
-  PERS.forEach(function(p){for(var di=0;di<6;di++){syncPointageDay(p.id,di,true); var day=getPointageDay(p.id,di); (day.items||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type,it.num||'',it.nom||'',it.mbl||'',roundQuarter(it.plannedH||0),roundQuarter(it.h||0),'planning']);}); (day.extras||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),'',it.num||'',it.nom||'',it.mbl||'',0,roundQuarter(it.h||0),'imprévu']);}); }});
+  PERS.forEach(function(p){for(var di=0;di<6;di++){syncPointageDay(p.id,di,true); var day=getPointageDay(p.id,di); (day.items||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type,it.num||'',it.nom||'',it.mbl||'',roundQuarter(it.plannedH||0),roundQuarter(it.h||0),'planning']);}); (day.extras||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),'',it.num||'',it.nom||'',it.mbl||'',0,roundQuarter(it.h||0),'ajouté']);}); }});
   var csv=rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(';');}).join('\r\n');
   var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='pointage_S'+isoWeek(wkMon)+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('CSV téléchargé');
 }

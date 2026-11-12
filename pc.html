@@ -536,6 +536,7 @@ function applyRemoteData(val){
   if(val.chefUsers) chefUsers=val.chefUsers;
   else if(val.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(val.chefPin)||DEFAULT_CHEF_PIN}];
   if(val.chantiers) CHANTIERS=normalizeChantiersList(val.chantiers);
+  reglages=(val.reglages&&typeof val.reglages==='object'&&!Array.isArray(val.reglages))?val.reglages:{};
   if(val.meta) appMeta=ensureMeta(val.meta);
   if(val.nextLineId!=null){var rid=parseInt(val.nextLineId,10); if(!isNaN(rid)&&rid>nextLineId) nextLineId=rid;}
   migrateState();
@@ -618,7 +619,7 @@ function initFirebase(){
 var vbSynced=null;          // copie de référence : état reçu de / envoyé à Firebase
 var vbPendingRemote=null, vbPendingTimer=null;
 var VB_DAY_STORES=['planning','pointage','planningBureau','pointageBureau'];
-var VB_WHOLE_KEYS=['people','personPins','chefUsers','chantiers'];
+var VB_WHOLE_KEYS=['people','personPins','chefUsers','chantiers','reglages'];
 function vbNorm(x){
   // Forme canonique : null / vide / undefined disparaissent (comme dans Firebase),
   // tableaux = objets à clés numériques (Firebase convertit l'un en l'autre).
@@ -649,7 +650,7 @@ function vbHistArr(m){
 }
 function vbLocalState(){
   var s={planning:planning,pointage:pointage,planningBureau:planningBureau,pointageBureau:pointageBureau,
-         cColorOverride:cColorOverride,people:PERS,personPins:personPins,chefUsers:chefUsers,chantiers:CHANTIERS};
+         cColorOverride:cColorOverride,people:PERS,personPins:personPins,chefUsers:chefUsers,chantiers:CHANTIERS,reglages:reglages};
   return s;
 }
 // Mémorise l'état courant comme référence (après réception de Firebase ou après un envoi).
@@ -899,6 +900,9 @@ function canWriteContext(){
 function readOnlyHere(){ return (isManager() || (typeof isBureauStaffUser==='function' && isBureauStaffUser())) && !canWriteContext(); }
 var wkMon=null, currentTab='';
 var planning={}, pointage={}, planningBureau={}, pointageBureau={}, legacyExtraPointage={}, cColorOverride={}, personPins={}, chefUsers=[], appMeta={lastModifiedAt:null,lastModifiedBy:'',history:[]};
+// 261112-1830 : réglages de fonctionnement PARTAGÉS (nœud data/reglages), communs à tous les appareils.
+//   reportAutoBE : true = au Bureau d'étude, le pointage est reporté tout seul au planning.
+var reglages={};
 // Contexte actif : 'production' (Planning) ou 'bureau' (Planning B.E.)
 var currentPlanningContext='production';
 function isBureauContext(){return currentPlanningContext==='bureau';}
@@ -946,7 +950,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261107-2045";
+var APP_VERSION="V1 261112-1930";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1169,7 +1173,7 @@ function removeChantierFromTable(num){
    Demande de Francis (22/10) : réservé à un ADMIN, sur PC. Décidé avec lui :
    le changement s'applique PARTOUT — la table des chantiers, le planning
    (Production et Bureau) et les pointages déjà encodés (lignes prévues et
-   chantiers imprévus), ainsi que la couleur attitrée du numéro.
+   chantiers ajoutés), ainsi que la couleur attitrée du numéro.
    Les heures ne bougent pas : seuls le numéro et le libellé des lignes
    changent. Dans l'application menuiserie, les heures suivent au prochain
    rapatriement des semaines concernées (le message final donne les dates).
@@ -1614,7 +1618,7 @@ function setDayTasks(pid,di,tasks,opts){
   if(tasks.length) P[w][pid][di]={tasks:tasks}; else delete P[w][pid][di];
   cleanupPlanningPath(w,pid,di);
   syncPointageDay(pid,di,true);
-  addHistoryEntry((isBureauContext()?'Planning B.E. : ':'Planning : ')+pinfo(pid).nom+' — '+DAYS[di]+' → '+(tasks.length?tasks.map(taskDesc).join(' / '):'vide'), prev, tasks);
+  addHistoryEntry((opts.auto?'Report automatique → ':'')+(isBureauContext()?'Planning B.E. : ':'Planning : ')+pinfo(pid).nom+' — '+DAYS[di]+' → '+(tasks.length?tasks.map(taskDesc).join(' / '):'vide'), prev, tasks);
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
   return true;
 }
@@ -1714,6 +1718,7 @@ function savePointageDay(pid,di,day,historyText,before,after){
   PT[w][pid][di]=day;
   if(historyText) addHistoryEntry(historyText,before,after);
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  planifierReportAuto(pid,di);   // 261112-1830 : Bureau d'étude, si le réglage est activé
 }
 // ── SYNCHRO POINTAGE → PLANNING (Option C) ───────────────────
 function pointageDayToTasks(pid,di){
@@ -1721,7 +1726,10 @@ function pointageDayToTasks(pid,di){
   // Récupérer les tâches planning existantes pour préserver leur colorIdx (sinon le sameJSON dans
   // setDayTasks détecte un changement inutile et fait un report même si tout est identique).
   var existingTaskMap={};
-  getDayTasks(pid,di).forEach(function(t){if(t.id) existingTaskMap[t.id]=t;});
+  var planDuJour=getDayTasks(pid,di);
+  planDuJour.forEach(function(t){if(t.id) existingTaskMap[t.id]=t;});
+  // Tâches issues des lignes pointées, rangées par tâche du planning.
+  var parTache={}, sansTache=[];
   (day.items||[]).forEach(function(it){
     if(it.hidden) return; // les masqués ne sont jamais reportés au planning
     var h=roundQuarter(it.h); if(h<=0) return;
@@ -1729,8 +1737,19 @@ function pointageDayToTasks(pid,di){
     var colorIdx=null;
     if(it.num && cColorOverride[it.num]!==undefined) colorIdx=cColorOverride[it.num];
     else if(existingTaskMap[it.taskId] && existingTaskMap[it.taskId].colorIdx!=null) colorIdx=existingTaskMap[it.taskId].colorIdx;
-    tasks.push(sanitizeTask({id:it.taskId||undefined,lineId:it.lineId,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx}));
+    var tk=sanitizeTask({id:it.taskId||undefined,lineId:it.lineId,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx});
+    if(it.taskId && existingTaskMap[it.taskId] && !parTache[it.taskId]) parTache[it.taskId]=tk; else sansTache.push(tk);
   });
+  // 261112-1830 : LES ABSENCES DU PLANNING SONT CONSERVÉES. Congé, vacances, maladie, chômage, bureau
+  // (types sans chantier) n'ont pas de ligne au pointage : le report, qui remplace la journée du
+  // planning par le pointage, les effaçait (une demi-journée de congé disparaissait, et « Reporter
+  // tout » vidait les journées d'absence complètes). On reprend donc la journée du planning dans son
+  // ordre : une absence reste telle quelle, une tâche de chantier prend ce qui a été pointé.
+  planDuJour.forEach(function(t){
+    if(NOCH[t.type]) tasks.push(t);
+    else if(parTache[t.id]) tasks.push(parTache[t.id]);
+  });
+  sansTache.forEach(function(tk){tasks.push(tk);});
   var dft=defaultTypeForPerson(pid);
   (day.extras||[]).forEach(function(it){
     var h=roundQuarter(it.h); if(h<=0) return;
@@ -1741,6 +1760,8 @@ function pointageDayToTasks(pid,di){
   });
   return tasks;
 }
+// Un chantier imprévu est « complet » (reportable) s'il a des heures et un chantier.
+function imprevuComplet(it){ return !!(it && roundQuarter(it.h)>0 && (String(it.num||'').trim()||String(it.nom||'').trim())); }
 function applyPointageToPlanning(pid,di,opts){
   opts=opts||{};
   var day=getPointageDay(pid,di);
@@ -1748,8 +1769,12 @@ function applyPointageToPlanning(pid,di,opts){
   // En mode force (bouton cliqué explicitement), on reporte toujours.
   // En mode auto (auto-synchro 16h), on ne reporte que les jours pointés.
   if(!opts.force && !day.pointed) return false;
+  // 261112-1900 : le pointage est d'abord recalé sur le planning du jour, comme le fait l'écran à
+  // l'affichage. Sans cela, une tâche du planning qui n'avait pas encore sa ligne au pointage (ajoutée
+  // par le rattrapage, ou depuis un autre appareil) était effacée du planning par le report.
+  syncPointageDay(pid,di,true);
   var tasks=pointageDayToTasks(pid,di);
-  var changed=setDayTasks(pid,di,tasks,{skipUndo:false,undoLabel:'Synchro pointage → planning'});
+  var changed=setDayTasks(pid,di,tasks,{skipUndo:!!opts.auto,auto:!!opts.auto,undoLabel:'Synchro pointage → planning'});
   // Après le report, les extras (Chantier imprévu) sont maintenant dans le planning
   // sous forme d'items normaux. On vide la liste extras pour éviter les doublons
   // au prochain rendu (sinon items + extras = doublon affiché).
@@ -1757,10 +1782,209 @@ function applyPointageToPlanning(pid,di,opts){
     var w=wkKey();
     var PT=activePointageStore();
     if(PT[w] && PT[w][pid] && PT[w][pid][di] && (PT[w][pid][di].extras||[]).length){
-      PT[w][pid][di].extras=[];
+      // 261112-1830 : en report automatique, une ligne d'imprévu encore incomplète (0 h, ou chantier
+      // pas encore choisi) est en cours de saisie : elle n'a pas été reportée, on la laisse.
+      PT[w][pid][di].extras=opts.auto?(PT[w][pid][di].extras||[]).filter(function(it){return it && !imprevuComplet(it);}):[];
     }
   }
   return changed;
+}
+
+// ══════════ 261112-1830 : REPORT AUTOMATIQUE (BUREAU D'ÉTUDE), BOUTONS ORANGE / VERT, RATTRAPAGE ══════════
+// Règle de Francis (12/11/2026) : la référence des heures est le PLANNING — c'est lui que lisent le
+// Dashboard et, bientôt, le rapatriement de VBS. En Production le chef reporte le pointage. Au Bureau
+// d'étude le report n'était pas toujours fait (76 h de « chantiers imprévus » jamais reportées sur le
+// 9229) : il peut donc se faire tout seul, quelques secondes après la dernière saisie au pointage.
+function reportAutoBE(){ return !!(reglages && reglages.reportAutoBE); }
+function setReportAutoBE(on){
+  if(!isManager()){ toast('Réservé aux chefs et à l\'admin'); return; }
+  if(!reglages || typeof reglages!=='object') reglages={};
+  if(on) reglages.reportAutoBE=true; else delete reglages.reportAutoBE;
+  addHistoryEntry('Réglage : report automatique du pointage B.E. '+(on?'ACTIVÉ':'désactivé'));
+  lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  if(currentTab==='settings') renderSettings();
+  toast(on?'✓ Report automatique B.E. activé':'Report automatique B.E. désactivé');
+}
+var AUTO_REPORT_DELAI=4000;       // ms après la dernière saisie
+var AUTO_REPORT_PATIENCE=12000;   // ms sans geste : on reporte même si un champ garde le curseur
+var autoReportJobs={};            // 'semaine|personne|jour' -> {mon, pid, di, t}
+var vbDerniereActivite=Date.now();
+['keydown','mousedown','touchstart','input'].forEach(function(ev){
+  document.addEventListener(ev,function(){ vbDerniereActivite=Date.now(); },true);
+});
+function saisieEnCoursPointage(){
+  var a=document.activeElement; if(!a || !a.tagName) return false;
+  var tag=a.tagName.toUpperCase();
+  if(tag!=='INPUT' && tag!=='SELECT' && tag!=='TEXTAREA') return false;
+  return !!(a.closest && a.closest('#tab-pointage,#tab-pointage_be'));
+}
+function planifierReportAuto(pid,di){
+  if(!reportAutoBE() || !isBureauContext() || !wkMon) return;
+  var cle=wkKey()+'|'+pid+'|'+di;
+  var job=autoReportJobs[cle]||{};
+  if(job.t) clearTimeout(job.t);
+  job.mon=new Date(wkMon.getTime()); job.pid=pid; job.di=parseInt(di,10);
+  job.t=setTimeout(function(){ executerReportAuto(cle,false); }, AUTO_REPORT_DELAI);
+  autoReportJobs[cle]=job;
+}
+function executerReportAuto(cle,sansAttendre){
+  var job=autoReportJobs[cle]; if(!job) return;
+  if(job.t){ clearTimeout(job.t); job.t=null; }
+  // On n'interrompt pas quelqu'un qui tape : le report redessine l'écran. On attend qu'il quitte le
+  // champ, ou qu'il n'ait plus rien touché depuis un moment.
+  if(!sansAttendre && saisieEnCoursPointage() && (Date.now()-vbDerniereActivite)<AUTO_REPORT_PATIENCE){
+    job.t=setTimeout(function(){ executerReportAuto(cle,false); }, 1500);
+    return;
+  }
+  delete autoReportJobs[cle];
+  if(!reportAutoBE()) return;
+  // Le report se fait sur la semaine et le périmètre de la SAISIE, même si l'écran a changé depuis.
+  var savMon=wkMon, savCtx=currentPlanningContext, changed=false;
+  try{
+    wkMon=job.mon; currentPlanningContext='bureau';
+    if(!readOnlyHere()) changed=applyPointageToPlanning(job.pid,job.di,{force:true,auto:true});
+  }catch(e){ console.warn('Report automatique',e); }
+  finally{ wkMon=savMon; currentPlanningContext=savCtx; }
+  if(changed){
+    // applyPointageToPlanning retire les imprévus reportés APRÈS l'enregistrement fait par setDayTasks.
+    lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+    focusedExtraField=null;     // l'écran DOIT être redessiné : les lignes ont changé de place
+    if(currentTab==='planning'||currentTab==='planning_be') renderPlanning();
+    if(currentTab==='pointage'||currentTab==='pointage_be') renderPointage();
+  }
+}
+// Fermeture ou mise en arrière-plan : on n'attend pas les 4 secondes.
+function viderReportsAuto(){ Object.keys(autoReportJobs).forEach(function(cle){ executerReportAuto(cle,true); }); }
+window.addEventListener('pagehide',viderReportsAuto);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') viderReportsAuto(); });
+
+// ── Boutons « Reporter » : ORANGE s'il reste quelque chose à reporter, VERT si le planning est à jour.
+// Calculé en comparant le pointage du jour au planning du jour : rien n'est mémorisé, donc le bouton
+// repasse à l'orange dès que quelqu'un change un pointage, sur n'importe quel appareil.
+var BTN_VERT='background:#dcfce7;border:1px solid #86efac;color:#166534';
+var BTN_ORANGE='background:#ffedd5;border:1px solid #fb923c;color:#9a3412';
+function pointageAReporter(pid,di){
+  var day=getPointageDay(pid,di); if(!day) return false;
+  var ex=day.extras||[];
+  for(var i=0;i<ex.length;i++){ if(imprevuComplet(ex[i])) return true; }
+  var plan={}, absences={};
+  getDayTasks(pid,di).forEach(function(t){ if(NOCH[t.type]) absences[t.id]=1; else plan[t.id]=t; });
+  var its=day.items||[];
+  for(var j=0;j<its.length;j++){
+    var it=its[j]; if(!it) continue;
+    // 261112-1900 : ancienne ligne miroir d'une absence du planning (congé, maladie…). L'absence reste
+    // au planning telle quelle : il n'y a rien à reporter, le bouton ne doit pas être orange pour elle.
+    if(it.taskId && absences[it.taskId]) continue;
+    var t=it.taskId?plan[it.taskId]:null;
+    var h=it.hidden?0:roundQuarter(it.h);
+    if(!t){ if(h>0) return true; continue; }
+    if(h!==roundQuarter(t.h)) return true;                     // heures pointées ≠ planning (ou ligne masquée / à 0 h)
+    if((it.type||t.type)!==t.type) return true;                // section changée au pointage
+    if(String(it.mbl||'').trim()!==String(t.mbl||'').trim()) return true;   // LOT changé au pointage
+  }
+  return false;
+}
+function pointageSemaineAReporter(pid){
+  for(var di=0;di<6;di++){ if(pointageAReporter(pid,di)) return true; }
+  return false;
+}
+
+// ── Rattrapage : les chantiers imprévus restés au pointage, TOUTES SEMAINES confondues.
+// Section d'un ancien imprévu enregistré sans section : d'après le PÉRIMÈTRE (production ou bureau),
+// jamais d'après l'onglet ouvert — defaultTypeForPerson() dépend de l'onglet courant.
+function typeImprevuSansSection(pid, scope){
+  var p=pinfo(pid)||{};
+  var dt=String(p.defaultType||'').toUpperCase();
+  var ok=!!(dt&&tinfo(dt)&&tinfo(dt).id===dt&&!NOCH[dt]);
+  if(scope==='bureau') return (ok&&BUREAU_TYPES[dt])?dt:'E';
+  if(ok&&!BUREAU_TYPES[dt]) return dt;
+  var g=String(p.g||'').toUpperCase();
+  for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===g&&!NOCH[g]&&!BUREAU_TYPES[g]) return g;
+  return 'P';
+}
+// La clé de semaine vient de toISOString() : selon le fuseau de l'appareil qui a écrit, la même
+// semaine peut être rangée au dimanche (UTC) ou au lundi. On cherche la même clé, puis la même semaine.
+function cleMemeSemaine(store, wk){
+  store=store||{};
+  if(store[wk]) return wk;
+  var m=lundiDeCle(wk); if(isNaN(m)) return wk;
+  var t=m.getTime(), ks=Object.keys(store);
+  for(var i=0;i<ks.length;i++){ var m2=lundiDeCle(ks[i]); if(!isNaN(m2) && m2.getTime()===t) return ks[i]; }
+  return wk;
+}
+function vbListe(o){
+  if(Array.isArray(o)) return o;
+  if(o && typeof o==='object') return Object.keys(o).filter(function(k){return /^\d+$/.test(k);}).sort(function(a,b){return parseInt(a,10)-parseInt(b,10);}).map(function(k){return o[k];});
+  return [];
+}
+// Liste des imprévus complets encore au pointage. « jumeau » : le planning du même jour porte déjà
+// une tâche de même N°, même LOT et mêmes heures (ancien report resté en double) — à voir à la main.
+function imprevusEnAttente(scope){
+  var PT=(scope==='bureau')?pointageBureau:pointage, PL=(scope==='bureau')?planningBureau:planning, out=[];
+  Object.keys(PT||{}).forEach(function(wk){
+    var mon=lundiDeCle(wk); if(isNaN(mon)) return;
+    var W=PT[wk]||{};
+    Object.keys(W).forEach(function(pid){
+      var D=W[pid]||{};
+      Object.keys(D).forEach(function(di){
+        var day=D[di]; if(!day || !day.extras) return;
+        var ex=vbListe(day.extras); if(!ex.length) return;
+        var kp=cleMemeSemaine(PL,wk);
+        var jp=((PL[kp]||{})[pid]||{})[di];
+        var deja=((jp&&Array.isArray(jp.tasks))?jp.tasks:[]).map(function(t){
+          return {num:String((t&&t.num)||'').trim(),mbl:String((t&&t.mbl)||'').trim(),h:roundQuarter(t&&t.h),pris:false};
+        });
+        ex.forEach(function(it,idx){
+          if(!imprevuComplet(it)) return;
+          var num=String(it.num||'').trim(), mbl=String(it.mbl||'').trim(), h=roundQuarter(it.h), jum=false;
+          if(num){ for(var i=0;i<deja.length;i++){ var d=deja[i]; if(!d.pris && d.num===num && d.mbl===mbl && Math.abs(d.h-h)<0.001){ d.pris=true; jum=true; break; } } }
+          var dd=new Date(mon); dd.setDate(dd.getDate()+(parseInt(di,10)||0));
+          out.push({wk:wk,pid:pid,di:di,it:it,h:h,jumeau:jum,date:dd});
+        });
+      });
+    });
+  });
+  return out;
+}
+// Ajoute au planning les imprévus en attente (jamais de remplacement), puis les retire du pointage.
+function rattraperImprevus(){
+  if(!canEditPlanning() || readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
+  var scope=isBureauContext()?'bureau':'prod', ctx=isBureauContext()?'Bureau d\'étude':'Production';
+  var tous=imprevusEnAttente(scope), afaire=tous.filter(function(x){return !x.jumeau;}), jum=tous.length-afaire.length;
+  if(!afaire.length){ toast(jum?('Rien à reporter — '+jum+' ligne'+(jum>1?'s':'')+' ajoutée'+(jum>1?'s':'')+' déjà présente'+(jum>1?'s':'')+' au planning, à vérifier à la main'):'Aucune ligne ajoutée en attente'); return; }
+  var th=0, parPers={}, dmin=null, dmax=null;
+  afaire.forEach(function(x){ th+=x.h; var n=pinfo(x.pid).nom||x.pid; parPers[n]=(parPers[n]||0)+x.h; if(!dmin||x.date<dmin) dmin=x.date; if(!dmax||x.date>dmax) dmax=x.date; });
+  var lignes=Object.keys(parPers).sort(function(a,b){return parPers[b]-parPers[a];}).map(function(n){return '   '+n+' : '+fmtH(parPers[n]);});
+  if(!confirm('Reporter au planning '+ctx+' les lignes ajoutées au pointage et pas encore reportées ?\n\n'
+      +afaire.length+' ligne'+(afaire.length>1?'s':'')+', '+fmtH(th)+', du '+fmtD(dmin,true)+' au '+fmtD(dmax,true)+' :\n'
+      +lignes.slice(0,12).join('\n')+(lignes.length>12?'\n   …':'')
+      +'\n\nElles sont AJOUTÉES au planning des jours concernés : rien n\'est remplacé ni effacé.'
+      +(jum?('\n\n'+jum+' autre'+(jum>1?'s':'')+' ligne'+(jum>1?'s':'')+' ajoutée'+(jum>1?'s':'')+' semble'+(jum>1?'nt':'')+' déjà au planning (même N°, même LOT, mêmes heures) : laissée'+(jum>1?'s':'')+' telle'+(jum>1?'s':'')+' quelle'+(jum>1?'s':'')+', à vérifier à la main.'):''))) return;
+  pushUndo('Rattrapage des lignes ajoutées au pointage — '+ctx);
+  var PT=(scope==='bureau')?pointageBureau:pointage, PL=(scope==='bureau')?planningBureau:planning;
+  var jours={};
+  afaire.forEach(function(x){ var k=x.wk+'|'+x.pid+'|'+x.di; if(!jours[k]) jours[k]={wk:x.wk,pid:x.pid,di:x.di,liste:[]}; jours[k].liste.push(x.it); });
+  Object.keys(jours).forEach(function(k){
+    var j=jours[k];
+    var kp=cleMemeSemaine(PL,j.wk);
+    if(!PL[kp]) PL[kp]={};
+    if(!PL[kp][j.pid]) PL[kp][j.pid]={};
+    var jp=PL[kp][j.pid][j.di];
+    // Journée du planning : au format « tasks », sinon ancien format (créneaux) converti.
+    var tasks=(jp&&Array.isArray(jp.tasks))?jp.tasks.slice():(jp?legacySlotsToTasks(jp):[]);
+    j.liste.forEach(function(it){
+      tasks.push(sanitizeTask({lineId:it.lineId,type:it.type||typeImprevuSansSection(j.pid,scope),num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:roundQuarter(it.h),
+        colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
+    });
+    PL[kp][j.pid][j.di]={tasks:tasks};
+    // Pointage : on ne garde que ce qui n'a pas été reporté (lignes incomplètes, jumeaux).
+    var day=PT[j.wk][j.pid][j.di];
+    day.extras=vbListe(day.extras).filter(function(it){ return it && j.liste.indexOf(it)<0; });
+  });
+  addHistoryEntry('Rattrapage : '+afaire.length+' ligne'+(afaire.length>1?'s':'')+' ajoutée'+(afaire.length>1?'s':'')+' au pointage reportée'+(afaire.length>1?'s':'')+' au planning '+ctx+' ('+fmtH(th)+', '+Object.keys(jours).length+' jour'+(Object.keys(jours).length>1?'s':'')+')');
+  lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
+  if(currentTab) renderCurrentTab();
+  toast('✓ '+afaire.length+' ligne'+(afaire.length>1?'s':'')+' ajoutée'+(afaire.length>1?'s':'')+' reportée'+(afaire.length>1?'s':'')+' au planning ('+fmtH(th)+')');
 }
 // Bouton "Reporter ce jour" — action explicite, force le report même si non pointé.
 function reportDayToPlanning(pid,di){
@@ -1816,7 +2040,7 @@ function resyncPointageDayFromPlanning(pid,di){
 }
 function resyncPointagePerson(pid){
   if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
-  if(!confirm('Resynchroniser le pointage de '+pinfo(pid).nom+' depuis le planning ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages seront effacés et remplacés par les valeurs du planning.')) return;
+  if(!confirm('Resynchroniser le pointage de '+pinfo(pid).nom+' depuis le planning ?\n\nLes heures pointées, remarques, chantiers ajoutés et masquages seront effacés et remplacés par les valeurs du planning.')) return;
   var n=0;
   for(var di=0; di<6; di++) n+=resyncPointageDayFromPlanning(pid,di);
   lsSave(); fbSave(); updateStatusBar();
@@ -1826,7 +2050,7 @@ function resyncPointagePerson(pid){
 function resyncPointageAllWeek(){
   if(readOnlyHere()){ toast('🔒 Lecture seule sur ce périmètre'); return; }
   var ctxLbl=isBureauContext()?'Bureau d\'étude':'Production';
-  if(!confirm('Resynchroniser le pointage de TOUTE l\'équipe '+ctxLbl+' depuis le planning de la semaine ?\n\nLes heures pointées, remarques, chantiers imprévus et masquages de toute l\'équipe seront effacés et remplacés par les valeurs du planning.\n\nÀ utiliser uniquement pour repartir d\'une base propre.')) return;
+  if(!confirm('Resynchroniser le pointage de TOUTE l\'équipe '+ctxLbl+' depuis le planning de la semaine ?\n\nLes heures pointées, remarques, chantiers ajoutés et masquages de toute l\'équipe seront effacés et remplacés par les valeurs du planning.\n\nÀ utiliser uniquement pour repartir d\'une base propre.')) return;
   var people=0, total=0;
   activePeopleForContext().forEach(function(p){
     var n=0; for(var di=0; di<6; di++) n+=resyncPointageDayFromPlanning(p.id,di);
@@ -2078,7 +2302,7 @@ function renderChantiers(){
   var inactifs=chantiersInactifs(lastMap);
   var inactifNums={}; inactifs.forEach(function(c){inactifNums[c.num]=1;});
   var html='<div class="dash-wrap">';
-  html+='<div class="summary-card" style="border-left:4px solid #0e7490"><div><b>📁 Table des chantiers</b><div style="font-size:12px;color:#64748b">Référentiel centralisé — le personnel sélectionne ses chantiers imprévus dans cette liste (plus de saisie libre, plus de doublons).</div></div><div class="big">'+CHANTIERS.length+'</div></div>';
+  html+='<div class="summary-card" style="border-left:4px solid #0e7490"><div><b>📁 Table des chantiers</b><div style="font-size:12px;color:#64748b">Référentiel centralisé — le personnel sélectionne dans cette liste les chantiers ajoutés au pointage (plus de saisie libre, plus de doublons).</div></div><div class="big">'+CHANTIERS.length+'</div></div>';
   // Formulaire d'ajout
   html+='<div class="dash-box"><h3>➕ Ajouter un chantier</h3>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
@@ -2365,7 +2589,7 @@ function renderPlanning(){
   if(!pplList.length) html+='<tr><td colspan="8" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne '+(isBureauContext()?'au Bureau d\'étude':'en Production')+'. Pour en ajouter, allez dans ⚙️ Paramètres → Personnel et créez ou affectez une personne à la section '+(isBureauContext()?'<b>Bureau</b>':'Machine/Atelier/Finition/Transport/Pose/Magasin')+'.</td></tr>';
   pplList.forEach(function(p){
     var col=tcol(p.g); html+='<tr class="person-row" style="border-top-color:'+col+'">';
-    html+='<td class="pname"><div class="person-card"><div class="person-avatar" style="background:'+col+'">'+p.nom.charAt(0)+'</div><div class="person-meta"><b>'+p.nom+'</b><span style="color:'+col+'">'+p.poste+'</span></div>'+((canEditPlanning()&&!readOnlyHere())?'<button class="resync-btn" title="Remettre le pointage de '+escAttr(p.nom)+' en miroir du planning (efface heures pointées, remarques, imprévus)" onclick="event.stopPropagation();resyncPointagePerson(\''+p.id+'\')">↻</button>':'')+'</div></td>';
+    html+='<td class="pname"><div class="person-card"><div class="person-avatar" style="background:'+col+'">'+p.nom.charAt(0)+'</div><div class="person-meta"><b>'+p.nom+'</b><span style="color:'+col+'">'+p.poste+'</span></div>'+((canEditPlanning()&&!readOnlyHere())?'<button class="resync-btn" title="Remettre le pointage de '+escAttr(p.nom)+' en miroir du planning (efface heures pointées, remarques, chantiers ajoutés)" onclick="event.stopPropagation();resyncPointagePerson(\''+p.id+'\')">↻</button>':'')+'</div></td>';
     for(var di=0;di<6;di++){
       var tasks=getDayTasks(p.id,di), total=plannedDayTotal(p.id,di), dayAbs=plannedDayAbsence(p.id,di), cellCls='daycell'+(sameClipboardSource(p.id,di)?' clip-src':(dayClipboard?' clip-ready':''));
       var badgeTxt;
@@ -2589,10 +2813,21 @@ function renderPointage(){
     if(selId && (isBE?!isBureauPerson(pinfo(selId)):!isProductionPerson(pinfo(selId)))) selId=(act[0]&&act[0].id)||'';
     window[selKey]=selId;
     html+='<div class="pillbar">';
-    act.forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="'+selKey+'=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span></button>';});
+    act.forEach(function(p){var col=tcol(p.g), on=p.id===selId; html+='<button class="'+(on?'on':'')+'" onclick="'+selKey+'=\''+p.id+'\';renderPointage()" style="'+(on?'background:'+col+';border-color:'+col+';':'')+'"><span style="display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;background:'+(on?'rgba(255,255,255,.28)':col)+';color:#fff;font-size:10px;font-weight:800">'+p.nom.charAt(0)+'</span>'+p.nom+'<span style="font-size:10px;opacity:.8">'+fmtH(pointageWeekTotal(p.id))+'</span>'+(pointageSemaineAReporter(p.id)?'<span title="Pointage à reporter au planning" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#f97316;border:1px solid #fff;margin-left:2px"></span>':'')+'</button>';});
     html+='</div>';
     var allBtnLbl=isBE?'✓ Reporter tout le pointage Bureau au planning Bureau':'✓ Reporter tout le pointage validé au planning';
-    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:800;padding:9px 16px" onclick="validatePointageAll()">'+allBtnLbl+'</button> <span style="font-size:12px;color:#64748b">Utilisez les boutons « Reporter ce jour » / « Reporter au planning » par personne.</span></div>';
+    // 261112-1830 : orange s'il reste du pointage à reporter cette semaine, vert si le planning est à jour.
+    var aRepTous=act.some(function(ap){return pointageSemaineAReporter(ap.id);});
+    if(aRepTous) allBtnLbl=allBtnLbl.replace('✓','⚠');
+    html+='<div style="padding:8px 4px 0"><button class="mini-btn" style="'+(aRepTous?BTN_ORANGE:BTN_VERT)+';font-weight:800;padding:9px 16px" title="'+(aRepTous?'Il reste du pointage à reporter au planning cette semaine':'Le planning de la semaine est à jour avec le pointage')+'" onclick="validatePointageAll()">'+allBtnLbl+'</button> <span style="font-size:12px;color:#64748b">'+(aRepTous?'<b style="color:#9a3412">Orange</b> = pointage pas encore reporté.':'<b style="color:#166534">Vert</b> = planning à jour.')+' Boutons « Reporter ce jour » / « Reporter au planning » par personne.'+((isBE&&reportAutoBE())?' <b>Report automatique B.E. activé.</b>':'')+'</span></div>';
+    // Chantiers imprévus restés au pointage, toutes semaines confondues : rattrapage en une fois.
+    if(!readOnlyHere()){
+      var enAtt=imprevusEnAttente(isBE?'bureau':'prod'), aRatt=enAtt.filter(function(x){return !x.jumeau;});
+      if(aRatt.length){
+        var hAtt=0, semAtt={}; aRatt.forEach(function(x){hAtt+=x.h; semAtt[x.wk]=1;});
+        html+='<div style="margin:8px 4px 0;padding:8px 12px;'+BTN_ORANGE+';border-radius:8px;font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span>⚠ <b>'+aRatt.length+' ligne'+(aRatt.length>1?'s':'')+' ajoutée'+(aRatt.length>1?'s':'')+' au pointage '+ctxLbl+'</b> ('+fmtH(hAtt)+'), pas encore reportée'+(aRatt.length>1?'s':'')+' au planning, sur '+Object.keys(semAtt).length+' semaine'+(Object.keys(semAtt).length>1?'s':'')+'.</span><button class="mini-btn" style="background:#fff;border:1px solid #fb923c;color:#9a3412;font-weight:800" onclick="rattraperImprevus()">Tout reporter au planning…</button></div>';
+      }
+    }
     if(selId) html+=pointageDetailHtml(selId);
     else html+='<div style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Aucune personne en '+ctxLbl+'. Ajoutez-en une dans ⚙️ Paramètres → Personnel.</div>';
   } else {
@@ -2618,7 +2853,8 @@ function pointageDetailHtml(pid){
   var ro=readOnlyHere();
   var reportLbl=isBureauContext()?'✓ Reporter au planning Bureau':'✓ Reporter au planning';
   var ctxTitle=isBureauContext()?'Pointage B.E. semaine ':'Pointage semaine ';
-  var html='<div class="pointage-wrap'+(ro?' pointage-readonly':'')+'" style="border-left:4px solid '+col+'"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+((canEditPlanning()&&!ro)?'<button class="mini-btn" style="background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700" onclick="validatePointagePerson(\''+pid+'\')">'+reportLbl+'</button>':'')+(ro?'':'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button>')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
+  var aRepPers=pointageSemaineAReporter(pid);   // 261112-1830 : bouton orange / vert
+  var html='<div class="pointage-wrap'+(ro?' pointage-readonly':'')+'" style="border-left:4px solid '+col+'"><div class="summary-card" style="border-left:4px solid '+col+'"><div><b>'+p.nom+'</b><div style="font-size:12px;color:#64748b">'+ctxTitle+isoWeek(wkMon)+'</div></div><div class="summary-actions">'+((canEditPlanning()&&!ro)?'<button class="mini-btn" style="'+(aRepPers?BTN_ORANGE:BTN_VERT)+';font-weight:700" title="'+(aRepPers?'Pointage de la semaine à reporter au planning':'Planning à jour avec le pointage')+'" onclick="validatePointagePerson(\''+pid+'\')">'+(aRepPers?reportLbl.replace('✓','⚠'):reportLbl)+'</button>':'')+(ro?'':'<button class="mini-btn" onclick="manualSave(\'Pointage\')">💾 Sauver</button>')+'<div class="big">'+fmtH(pointageWeekTotal(pid))+'</div></div></div>';
   var has=false;
   for(var di=0;di<6;di++){
     syncPointageDay(pid,di,true);
@@ -2699,10 +2935,11 @@ function pointageDetailHtml(pid){
     });
 
     if(count||canEditPlanning()||pid===userId){
-      rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Chantier imprévu</button></div>';
+      rows+='<div class="line-actions"><button onclick="addExtraTask(\''+pid+'\','+di+')">+ Ajouter un chantier</button></div>';
       var hiddenBanner=hiddenCount?'<button class="hidden-banner" onclick="restoreHiddenItems(\''+pid+'\','+di+')" title="Restaurer">+ '+hiddenCount+' chantier'+(hiddenCount>1?'s':'')+' masqué'+(hiddenCount>1?'s':'')+' · cliquer pour restaurer</button>':'';
       // Bouton de report par jour — copie le pointage du jour dans le planning du jour (force).
-      var dayReportBtn=canEditPlanning()?'<button class="day-report-btn" onclick="reportDayToPlanning(\''+pid+'\','+di+')" title="Remplacer le planning de ce jour par le pointage">✓ Reporter ce jour</button>':'';
+      var aRepJour=pointageAReporter(pid,di);   // 261112-1830 : orange = à reporter, vert = planning à jour
+      var dayReportBtn=canEditPlanning()?'<button class="day-report-btn"'+(aRepJour?' style="'+BTN_ORANGE+'"':'')+' onclick="reportDayToPlanning(\''+pid+'\','+di+')" title="'+(aRepJour?'Pointage différent du planning : cliquer pour reporter (les absences du planning sont conservées)':'Planning de ce jour à jour avec le pointage')+'">'+(aRepJour?'⚠':'✓')+' Reporter ce jour</button>':'';
       var ptAbs=pointageDayAbsence(pid,di);
       html+='<div class="pt-day"><div class="pt-day-title">'+DAYS[di]+' '+fmtD(dayDate(di),true)+hiddenBanner+dayReportBtn+'<span class="r">'+fmtH(pointageDayTotal(pid,di))+(ptAbs>0?' +'+fmtHShort(ptAbs)+' abs':'')+'</span></div>'+(count?rows:'<div class="empty-block">Aucune tâche planifiée</div>'+rows)+'</div>';
     }
@@ -2732,8 +2969,8 @@ function forceRenderPointage(){
     if(el){focusedExtraField=savedFocus; el.focus();}
   }
 }
-function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({lineId:allocLineId(),type:defaultTypeForPerson(pid),num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
-function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function addExtraTask(pid,di){var day=getPointageDay(pid,di), before=clone(day); day.extras.push({lineId:allocLineId(),type:defaultTypeForPerson(pid),num:'',nom:'',mbl:'',remarque:'',h:0}); day.pointed=true; savePointageDay(pid,di,day,'Ajout chantier au pointage : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
+function removeExtraTask(pid,di,idx){var day=getPointageDay(pid,di), before=clone(day); day.extras.splice(idx,1); day.pointed=true; savePointageDay(pid,di,day,'Suppression chantier ajouté : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();}
 function setPointageItemField(pid,di,idx,isExtra,field,value){
   var day=getPointageDay(pid,di), arr=isExtra?day.extras:day.items; if(!arr[idx]) return;
   var before=clone(day);
@@ -2760,7 +2997,7 @@ function restoreHiddenItems(pid,di){
   savePointageDay(pid,di,day,'Restauration chantiers : '+pinfo(pid).nom+' — '+DAYS[di],before,day); renderPointage();
 }
 function setExtraField(pid,di,idx,f,v){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; day.extras[idx][f]=v; day.pointed=true; savePointageDay(pid,di,day,null);}
-function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; day.pointed=true; savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
+function applyWeekExtraOption(pid,di,idx,val){var day=getPointageDay(pid,di); if(!day.extras[idx]) return; var list=weekChantierCatalog(); var opt=list[parseInt(val,10)]; if(!opt) return; day.extras[idx].num=opt.num||''; day.extras[idx].nom=opt.nom||''; if(opt.mbl) day.extras[idx].mbl=opt.mbl; day.pointed=true; savePointageDay(pid,di,day,'Sélection chantier ajouté : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day)); renderPointage();}
 // Sélection depuis la table de référence des chantiers (seul moyen d'assigner un chantier imprévu)
 function applyChantierTableOption(pid,di,idx,val){
   var day=getPointageDay(pid,di); if(!day.extras[idx]) return;
@@ -2768,7 +3005,7 @@ function applyChantierTableOption(pid,di,idx,val){
   day.extras[idx].num=c.num||'';
   day.extras[idx].nom=c.nom||'';
   day.pointed=true;
-  savePointageDay(pid,di,day,'Sélection chantier imprévu : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day));
+  savePointageDay(pid,di,day,'Sélection chantier ajouté : '+pinfo(pid).nom+' — '+DAYS[di],null,clone(day));
   renderPointage();
 }
 
@@ -3412,6 +3649,12 @@ function renderSettings(){
   html+=`<div class="setting-row"><div class="meta"><b>Connecté en tant que</b><span>${escAttr(currentDisplayName())}${bureauUser?' · '+escAttr(bureauUser.email||''):''}</span></div><span class="pin-tag">${role==='admin'?'👑 Admin':'👔 Chef'}</span></div>`;
   html+=`</div>`;
 
+  // ── 261112-1830 : RÉGLAGE PARTAGÉ — report automatique du pointage B.E. ──
+  var raOn=reportAutoBE();
+  html+=`<div class="setting-box"><h3>Report du pointage vers le planning</h3><p>Le <b>planning</b> est la référence des heures : c'est lui que lit le Dashboard. En <b>Production</b>, le chef reporte le pointage avec les boutons « Reporter » (orange = à reporter, vert = à jour). Au <b>Bureau d'étude</b>, le report peut se faire tout seul : quelques secondes après chaque saisie au Pointage B.E., la journée est reportée au Planning B.E. Les absences du planning sont conservées ; une ligne à 0 h disparaît.</p>`;
+  html+=`<div class="setting-row"><div class="meta"><b>Report automatique — Bureau d'étude</b><span>${raOn?'Activé : le Planning B.E. suit le Pointage B.E.':'Désactivé : report manuel, comme en Production.'} Réglage enregistré en ligne, commun à tous les appareils.</span></div><button class="mini-btn" style="${raOn?BTN_VERT:'background:#f1f5f9;border:1px solid #cbd5e1;color:#334155'};font-weight:800;padding:7px 14px" onclick="setReportAutoBE(${raOn?'false':'true'})">${raOn?'✓ Activé — désactiver':'Désactivé — activer'}</button></div>`;
+  html+=`</div>`;
+
   // ── COMPTES BUREAU (Firebase Auth) ──
   html+=`<div class="setting-box"><h3>🔑 Comptes bureau (Firebase Auth)</h3><p>Les comptes ci-dessous peuvent se connecter avec leur e-mail + mot de passe. ${isAdmin()?'En tant qu\'admin, vous pouvez modifier les rôles.':'Seul un admin peut modifier les rôles.'} <b>La création des comptes</b> (e-mail + mot de passe) se fait dans la <b>console Firebase</b> (Authentication → Users). Une fois un compte créé, son rôle apparaîtra ici après sa première connexion.</p>`;
   html+=`<div id="bureau-roles-list"><div style="font-size:12px;color:#94a3b8;padding:6px 0">Chargement…</div></div>`;
@@ -3580,7 +3823,7 @@ function doSaveJSON(){var data={version:9,savedAt:new Date().toISOString(),plann
 function doLoadJSON(input){var file=input.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(ev){try{var d=JSON.parse(ev.target.result); if(d.planning) planning=d.planning; if(d.pointage) pointage=d.pointage; if(d.planningBureau) planningBureau=d.planningBureau; if(d.pointageBureau) pointageBureau=d.pointageBureau; if(d.extraPointage) legacyExtraPointage=d.extraPointage; if(d.cColorOverride) cColorOverride=d.cColorOverride; if(d.people) PERS=d.people; if(d.personPins) personPins=d.personPins; if(d.chefUsers) chefUsers=d.chefUsers; else if(d.chefPin) chefUsers=[{id:'chef_main',nom:'Chef principal',pin:padPin(d.chefPin)||DEFAULT_CHEF_PIN}]; if(d.chantiers) CHANTIERS=normalizeChantiersList(d.chantiers); if(d.nextLineId) nextLineId=d.nextLineId; if(d.meta) appMeta=ensureMeta(d.meta); migrateState(); lsSave(); fbSave(); renderCurrentTab(); updateStatusBar(); toast('Sauvegarde chargée');}catch(e){toast('Fichier invalide');}}; r.readAsText(file); input.value='';}
 function doExportCSV(){
   var rows=[['Semaine','Personne','Jour','Date','Type','N Chantier','Client','LOT','Heures prévues','Heures pointées','Nature']];
-  PERS.forEach(function(p){for(var di=0;di<6;di++){syncPointageDay(p.id,di,true); var day=getPointageDay(p.id,di); (day.items||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type,it.num||'',it.nom||'',it.mbl||'',roundQuarter(it.plannedH||0),roundQuarter(it.h||0),'planning']);}); (day.extras||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type||'',it.num||'',it.nom||'',it.mbl||'',0,roundQuarter(it.h||0),'imprévu']);}); }});
+  PERS.forEach(function(p){for(var di=0;di<6;di++){syncPointageDay(p.id,di,true); var day=getPointageDay(p.id,di); (day.items||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type,it.num||'',it.nom||'',it.mbl||'',roundQuarter(it.plannedH||0),roundQuarter(it.h||0),'planning']);}); (day.extras||[]).forEach(function(it){rows.push([isoWeek(wkMon),p.nom,DAYS[di],fmtD(dayDate(di),true),it.type||'',it.num||'',it.nom||'',it.mbl||'',0,roundQuarter(it.h||0),'ajouté']);}); }});
   var csv=rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(';');}).join('\r\n');
   var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='pointage_S'+isoWeek(wkMon)+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1000); toast('CSV téléchargé');
 }
