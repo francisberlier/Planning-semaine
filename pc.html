@@ -950,7 +950,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261112-1930";
+var APP_VERSION="V1 261112-2000";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1981,6 +1981,21 @@ function rattraperImprevus(){
     var day=PT[j.wk][j.pid][j.di];
     day.extras=vbListe(day.extras).filter(function(it){ return it && j.liste.indexOf(it)<0; });
   });
+  // 261112-2000 : le pointage des journées touchées est recalé TOUT DE SUITE sur leur planning (une
+  // ligne par tâche) et part dans le même envoi. Sans cela, la ligne reportée n'existait plus dans le
+  // pointage ENREGISTRÉ tant que la journée n'avait pas été modifiée à l'écran : le rapatriement de
+  // VBS, qui lit le pointage enregistré, ne voyait plus ces heures.
+  var savMonR=wkMon, savRendR=isRendering;
+  try{
+    isRendering=true;   // pas d'enregistrement journée par journée : un seul envoi, juste après
+    Object.keys(jours).forEach(function(k){
+      var j=jours[k], m=lundiDeCle(j.wk); if(isNaN(m)) return;
+      wkMon=new Date(m.getTime());
+      if(wkKey()!==j.wk || cleMemeSemaine(PL,j.wk)!==j.wk) return;   // semaine rangée sous une autre clé : recalée à l'affichage
+      syncPointageDay(j.pid,parseInt(j.di,10),true);
+    });
+  }catch(e){ console.warn('Rattrapage : recalage du pointage',e); }
+  finally{ wkMon=savMonR; isRendering=savRendR; }
   addHistoryEntry('Rattrapage : '+afaire.length+' ligne'+(afaire.length>1?'s':'')+' ajoutée'+(afaire.length>1?'s':'')+' au pointage reportée'+(afaire.length>1?'s':'')+' au planning '+ctx+' ('+fmtH(th)+', '+Object.keys(jours).length+' jour'+(Object.keys(jours).length>1?'s':'')+')');
   lsSave(); fbSave(); updateStatusBar(); renderHistoryIfOpen();
   if(currentTab) renderCurrentTab();
