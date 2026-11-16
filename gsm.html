@@ -617,7 +617,7 @@ function vbOnRemote(val,apply){
 }
 
 var ignoreRemoteUntil=0;
-var APP_VERSION="GSM V1 261112-1930";
+var APP_VERSION="GSM V1 261116-1815";
 function fbListen(){
   if(!db) return;
   db.ref('data').on('value', function(snap){
@@ -928,6 +928,16 @@ function normalizeChantiersList(v){
       lots.push(l);
     });
     if(lots.length) entry.lots=lots;
+    // GSM V1 261116 - libellés des lots envoyés par VBS (lotsDesc : code -> libellé).
+    // À CONSERVER : sans cette ligne, une réécriture de la table effacerait les libellés.
+    if(c.lotsDesc && typeof c.lotsDesc==='object'){
+      var ld={};
+      Object.keys(c.lotsDesc).forEach(function(k){
+        var kk=String(k||'').trim().slice(0,12), vv=String(c.lotsDesc[k]||'').trim().slice(0,40);
+        if(kk && vv) ld[kk]=vv;
+      });
+      if(Object.keys(ld).length) entry.lotsDesc=ld;
+    }
     out.push(entry);
   });
   out.sort(function(a,b){return (b.num||'').localeCompare(a.num||'','fr',{numeric:true,sensitivity:'base'});});
@@ -939,6 +949,29 @@ function chantierLots(num){
   var c=CHANTIERS.find(function(x){return x.num===num;});
   return (c&&Array.isArray(c.lots))?c.lots:[];
 }
+// GSM V1 261116 - libellé d'un LOT (lotsDesc, rempli par VBS). « 01 » ≡ « 001 ».
+function vbNormCode(v){
+  v=String(v||'').trim().toLowerCase();
+  if(v.indexOf('lot')===0) v=v.slice(3);
+  v=v.replace(/[\s.\-_]/g,'');
+  var m=/^0*(\d+)([a-z]?)$/.exec(v);
+  return m?(String(parseInt(m[1],10))+m[2]):v;
+}
+function lotDesc(num,code){
+  num=String(num||'').trim(); if(!num) return '';
+  var c=CHANTIERS.find(function(x){return x.num===num;});
+  var d=c&&c.lotsDesc; if(!d) return '';
+  var k=String(code||'').trim(); if(!k) return '';
+  if(d[k]) return d[k];
+  var n=vbNormCode(k);
+  var ks=Object.keys(d);
+  for(var i=0;i<ks.length;i++){ if(vbNormCode(ks[i])===n) return d[ks[i]]; }
+  return '';
+}
+function lotLabel(num,code){
+  var c=String(code||'').trim(), t=lotDesc(num,c);
+  return t?(c+' — '+t):c;
+}
 function lotFieldHtml(obj,disabled,onchangeAttr){
   if(disabled) return '<input placeholder="LOT" disabled value=""/>';
   var lots=chantierLots(obj.num);
@@ -948,9 +981,11 @@ function lotFieldHtml(obj,disabled,onchangeAttr){
   }
   var opts='<option value="">— LOT —</option>';
   var inList=lots.some(function(l){return l===cur;});
-  if(cur && !inList) opts+='<option value="'+escAttr(cur)+'" selected>'+escAttr(cur)+' (hors liste)</option>';
-  opts+=lots.map(function(l){return '<option value="'+escAttr(l)+'" '+(l===cur?'selected':'')+'>'+escAttr(l)+'</option>';}).join('');
-  return '<select onchange="'+onchangeAttr+'" title="LOT (défini dans la table des chantiers)">'+opts+'</select>';
+  if(cur && !inList) opts+='<option value="'+escAttr(cur)+'" selected>'+escAttr(lotLabel(obj.num,cur)||cur)+' (hors liste)</option>';
+  // GSM V1 261116 - libellé VBS à côté du code : « 001 — M01 Banquette »
+  opts+=lots.map(function(l){return '<option value="'+escAttr(l)+'" '+(l===cur?'selected':'')+'>'+escAttr(lotLabel(obj.num,l))+'</option>';}).join('');
+  var titre=cur?lotLabel(obj.num,cur):'LOT (défini dans la table des chantiers)';
+  return '<select onchange="'+onchangeAttr+'" title="'+escAttr(titre)+'">'+opts+'</select>';
 }
 function applyChantierTableOption(pid,di,idx,val){
   var day=getPointageDay(pid,di); if(!day.extras[idx]) return;
@@ -1726,7 +1761,7 @@ function taskDisplayLabel(t,withHours){
   var parts=[];
   if((t.num||'').trim()) parts.push(escAttr(t.num));
   if((t.nom||'').trim()) parts.push(escAttr(t.nom));
-  if((t.mbl||'').trim()) parts.push(escAttr(t.mbl));
+  if((t.mbl||'').trim()) parts.push(escAttr(lotLabel(t.num,t.mbl))); // GSM V1 261116 - libellé du lot sur le bloc
   if(!parts.length) parts.push('Sans devis');
   if(withHours) parts.push(fmtHShort(t.h));
   return parts.join(' ');
