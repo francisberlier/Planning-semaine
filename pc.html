@@ -200,6 +200,11 @@ input,select{font-size:14px}
 .dash-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#94a3b8;padding:6px 10px;border-bottom:2px solid #eef2f7;white-space:nowrap}
 .dash-table td{padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap}
 .dash-table tbody tr:hover{background:#f8fafc}
+/* 261116 : table des chantiers — les badges LOT reviennent à la ligne. Sans cela, un chantier
+   à beaucoup de LOTs (9243 : 16) forçait le tableau hors écran : la colonne « Dernière activité »
+   et les boutons Modifier/Supprimer devenaient invisibles (seule la barre horizontale tout en bas
+   des 104 lignes permettait de les atteindre). Nouvelle classe, aucune règle existante modifiée. */
+.vb-lots-cell{white-space:normal !important;min-width:240px}
 .dash-table.dash-12 th,.dash-table.dash-12 td{text-align:center;padding:6px 8px}
 .dash-table.dash-12 th:first-child,.dash-table.dash-12 td:first-child{text-align:left}
 .dash-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:middle}
@@ -950,7 +955,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261112-2000";
+var APP_VERSION="V1 261116-1630";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -2363,7 +2368,7 @@ function renderChantiers(){
         // V1 261106 - plus d'ajout libre de LOT ici : les codes viennent de
         // VBS (Production > « Transferer au pointage »). Le retrait (×) reste.
       }
-      html+='<tr><td><b>'+escAttr(c.num)+'</b></td><td>'+escAttr(c.nom||'')+'</td><td>'+lotsCell+'</td><td style="'+actStyle+';font-size:12px">'+actLbl+inactifBadge+'</td><td style="white-space:nowrap">'
+      html+='<tr><td><b>'+escAttr(c.num)+'</b></td><td>'+escAttr(c.nom||'')+'</td><td class="vb-lots-cell">'+lotsCell+'</td><td style="'+actStyle+';font-size:12px">'+actLbl+inactifBadge+'</td><td style="white-space:nowrap">'
         +(peutModifierChantier(c.num)?'<button class="mini-btn" style="color:#075985;border:1px solid #7dd3fc;background:#e0f2fe;font-weight:700;margin-right:4px" title="Changer le N° ou le libellé, partout (admin, sur PC)" onclick="ouvrirModifChantier(\''+safeNum+'\')">✏ Modifier</button>':'')
         +'<button class="mini-btn" style="color:#dc2626;border:1px solid #fecaca;background:#fef2f2;font-weight:700" onclick="removeChantierFromTable(\''+safeNum+'\')">🗑 Supprimer</button></td></tr>';
       if(chEditNum===c.num) html+=ligneModifChantier(c);
