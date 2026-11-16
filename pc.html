@@ -955,7 +955,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261116-1630";
+var APP_VERSION="V1 261116-1800";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1059,6 +1059,17 @@ function normalizeChantiersList(v){
       lots.push(l);
     });
     if(lots.length) entry.lots=lots;
+    // V1 261116 - libellés des lots envoyés par VBS (lotsDesc : code -> libellé).
+    // À CONSERVER : sans cette ligne, toute modification de la table depuis
+    // l'app réécrivait les chantiers sans lotsDesc et effaçait les libellés.
+    if(c.lotsDesc && typeof c.lotsDesc==='object'){
+      var ld={};
+      Object.keys(c.lotsDesc).forEach(function(k){
+        var kk=String(k||'').trim().slice(0,12), vv=String(c.lotsDesc[k]||'').trim().slice(0,40);
+        if(kk && vv) ld[kk]=vv;
+      });
+      if(Object.keys(ld).length) entry.lotsDesc=ld;
+    }
     out.push(entry);
   });
   out.sort(function(a,b){return (b.num||'').localeCompare(a.num||'','fr',{numeric:true,sensitivity:'base'});});
@@ -1070,6 +1081,30 @@ function chantierLots(num){
   num=String(num||'').trim(); if(!num) return [];
   var c=CHANTIERS.find(function(x){return x.num===num;});
   return (c&&Array.isArray(c.lots))?c.lots:[];
+}
+// V1 261116 - libellé d'un LOT (lotsDesc de la table, rempli par VBS).
+// Comparaison par code normalisé comme dans VBS : « 01 » ≡ « 001 » ≡ « LOT 1 ».
+function vbNormCode(v){
+  v=String(v||'').trim().toLowerCase();
+  if(v.indexOf('lot')===0) v=v.slice(3);
+  v=v.replace(/[\s.\-_]/g,'');
+  var m=/^0*(\d+)([a-z]?)$/.exec(v);
+  return m?(String(parseInt(m[1],10))+m[2]):v;
+}
+function lotDesc(num,code){
+  num=String(num||'').trim(); if(!num) return '';
+  var c=CHANTIERS.find(function(x){return x.num===num;});
+  var d=c&&c.lotsDesc; if(!d) return '';
+  var k=String(code||'').trim(); if(!k) return '';
+  if(d[k]) return d[k];
+  var n=vbNormCode(k);
+  var ks=Object.keys(d);
+  for(var i=0;i<ks.length;i++){ if(vbNormCode(ks[i])===n) return d[ks[i]]; }
+  return '';
+}
+function lotLabel(num,code){
+  var c=String(code||'').trim(), t=lotDesc(num,c);
+  return t?(c+' — '+t):c;
 }
 function parseLotsString(s){
   return String(s||'').split(',').map(function(l){return l.trim().slice(0,12);}).filter(function(l){return l;});
@@ -2363,7 +2398,8 @@ function renderChantiers(){
         var lots=Array.isArray(c.lots)?c.lots:[];
         lotsCell=lots.map(function(l){
           var safeLot=escAttr(l).replace(/'/g,"\\'");
-          return '<span style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:700;margin:1px 3px 1px 0">'+escAttr(l)+'<a style="cursor:pointer;color:#93c5fd;font-weight:900" title="Retirer ce LOT" onclick="removeLotFromChantier(\''+safeNum+'\',\''+safeLot+'\')">×</a></span>';
+          var desc=lotDesc(c.num,l); // V1 261116 - libellé VBS en info-bulle
+          return '<span title="'+escAttr(desc)+'" style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:700;margin:1px 3px 1px 0;'+(desc?'cursor:help':'')+'">'+escAttr(l)+'<a style="cursor:pointer;color:#93c5fd;font-weight:900" title="Retirer ce LOT" onclick="removeLotFromChantier(\''+safeNum+'\',\''+safeLot+'\')">×</a></span>';
         }).join('');
         // V1 261106 - plus d'ajout libre de LOT ici : les codes viennent de
         // VBS (Production > « Transferer au pointage »). Le retrait (×) reste.
@@ -2725,9 +2761,11 @@ function lotFieldHtml(obj,disabled,onchangeAttr,addBtnAttr){
   }
   var opts='<option value="">— LOT —</option>';
   var inList=lots.some(function(l){return l===cur;});
-  if(cur && !inList) opts+='<option value="'+escAttr(cur)+'" selected>'+escAttr(cur)+' (hors liste)</option>';
-  opts+=lots.map(function(l){return '<option value="'+escAttr(l)+'" '+(l===cur?'selected':'')+'>'+escAttr(l)+'</option>';}).join('');
-  return '<select onchange="'+onchangeAttr+'" title="LOT (défini dans la table des chantiers)">'+opts+'</select>'+btn;
+  if(cur && !inList) opts+='<option value="'+escAttr(cur)+'" selected>'+escAttr(lotLabel(obj.num,cur)||cur)+' (hors liste)</option>';
+  // V1 261116 - libellé VBS à côté du code : « 001 — M01 Banquette »
+  opts+=lots.map(function(l){return '<option value="'+escAttr(l)+'" '+(l===cur?'selected':'')+'>'+escAttr(lotLabel(obj.num,l))+'</option>';}).join('');
+  var titre=cur?lotLabel(obj.num,cur):'LOT (défini dans la table des chantiers)';
+  return '<select onchange="'+onchangeAttr+'" title="'+escAttr(titre)+'">'+opts+'</select>'+btn;
 }
 // Création d'un LOT depuis l'éditeur de journée, sans quitter la fenêtre.
 // Le LOT est ajouté à la table des chantiers (donc disponible partout, y
@@ -3220,7 +3258,7 @@ function chantierDetailHtml(C,safeId,num){
       var v2=lots[k];
       var lines=(C.lines&&C.lines[t+'|'+k])||[];
       var lid=posteId+'_l'+ki;
-      html+='<div class="lot-row vb-lot-click" onclick="togglePosteDetail(\''+lid+'\')" title="Cliquer pour voir les prestations"><span class="lot-name"><span class="dash-arrow" id="ar_'+lid+'">▸</span> '+escAttr(k)+'</span><span class="lot-bar">'+dashBar(v2,maxL,ti.col)+'</span><span class="lot-h">'+fmtH(v2)+'</span></div>';
+      html+='<div class="lot-row vb-lot-click" onclick="togglePosteDetail(\''+lid+'\')" title="Cliquer pour voir les prestations"><span class="lot-name"><span class="dash-arrow" id="ar_'+lid+'">▸</span> '+escAttr(k==='(sans LOT)'?k:lotLabel(num,k))+'</span><span class="lot-bar">'+dashBar(v2,maxL,ti.col)+'</span><span class="lot-h">'+fmtH(v2)+'</span></div>';
       html+='<div class="vb-mv-lines" id="'+lid+'" style="display:none">'+mvLignesHtml(lines,lid,mvOn)+'</div>';
     });
     html+='</div>';
