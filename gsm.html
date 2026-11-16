@@ -92,6 +92,8 @@ input,select{font-size:14px}
 .task-mini:last-child{margin-bottom:0}
 .task-mini .tm-wrap{display:flex;flex-direction:column;justify-content:center;min-width:0;width:100%}
 .task-mini .tm-main{display:block;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* GSM V1 261116-1830 : LOT sur sa propre ligne quand le texte depasse 30 caracteres */
+.tm-lot{display:block;font-size:10px;font-weight:600;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .day-gap{flex:1 0 0;border:1px dashed #dbe3ee;border-radius:8px;background:repeating-linear-gradient(-45deg,#f8fafc,#f8fafc 8px,#f1f5f9 8px,#f1f5f9 16px)}
 .task-empty{font-size:10px;color:#94a3b8;font-style:italic;padding-top:10px}
 .top-actions{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;flex-wrap:wrap}
@@ -617,7 +619,7 @@ function vbOnRemote(val,apply){
 }
 
 var ignoreRemoteUntil=0;
-var APP_VERSION="GSM V1 261116-1815";
+var APP_VERSION="GSM V1 261116-1830";
 function fbListen(){
   if(!db) return;
   db.ref('data').on('value', function(snap){
@@ -1761,10 +1763,17 @@ function taskDisplayLabel(t,withHours){
   var parts=[];
   if((t.num||'').trim()) parts.push(escAttr(t.num));
   if((t.nom||'').trim()) parts.push(escAttr(t.nom));
-  if((t.mbl||'').trim()) parts.push(escAttr(lotLabel(t.num,t.mbl))); // GSM V1 261116 - libellé du lot sur le bloc
-  if(!parts.length) parts.push('Sans devis');
-  if(withHours) parts.push(fmtHShort(t.h));
-  return parts.join(' ');
+  var lotTxt=(t.mbl||'').trim()?lotLabel(t.num,t.mbl):'';
+  if(!parts.length && !lotTxt) parts.push('Sans devis');
+  var heures=withHours?' '+fmtHShort(t.h):'';
+  // GSM V1 261116-1830 : au-delà de 30 caractères, le N° devis et le LOT
+  // passent sur deux lignes (demande de Francis) ; sinon tout sur une ligne.
+  var brut=(parts.join(' ')+(lotTxt?' '+lotTxt:'')).replace(/&[a-z]+;/g,'x');
+  if(lotTxt && brut.length>30){
+    return parts.join(' ')+heures+'<span class="tm-lot">'+escAttr(lotTxt)+'</span>';
+  }
+  if(lotTxt) parts.push(escAttr(lotTxt));
+  return parts.join(' ')+heures;
 }
 function taskMiniHtml(t){
   var c=taskColor(t), txt=taskDisplayLabel(t,true);
