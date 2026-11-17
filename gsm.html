@@ -619,7 +619,7 @@ function vbOnRemote(val,apply){
 }
 
 var ignoreRemoteUntil=0;
-var APP_VERSION="GSM V1 261116-1830";
+var APP_VERSION="GSM V1 261117-1640";
 function fbListen(){
   if(!db) return;
   db.ref('data').on('value', function(snap){
@@ -1316,6 +1316,14 @@ function pointageDayToTasks(pid,di){
   var existingTaskMap={};
   var planDuJour=getDayTasks(pid,di);
   planDuJour.forEach(function(t){if(t.id) existingTaskMap[t.id]=t;});
+  // 261117-1640 : UNE ABSENCE NE SE REPORTE PAS DEUX FOIS (cas David, mercredi 11/11). Une ligne
+  // de pointage sur un poste d'absence (0005 Congé, 0006 Malade, 0007 Chômage) n'est PAS reportée
+  // quand le planning du jour porte déjà la même absence (bloc congé/maladie/chômage sans chantier,
+  // boutons V/C ou encodage du chef) : sinon la journée comptait l'absence deux fois (8h + 8h abs).
+  // Quand le planning du jour n'a pas l'absence, pointer 0005/0006/0007 se reporte comme avant.
+  var absFamille={};
+  planDuJour.forEach(function(t){ if(NOCH[t.type]) absFamille[t.type]=1; });
+  function absenceDejaAuPlanning(num){ var f=ABSENCE_NUMS[String(num||'').trim()]; return !!(f && absFamille[f]); }
   // Tâches issues des lignes pointées, rangées par tâche du planning.
   var parTache={}, sansTache=[];
   (day.items||[]).forEach(function(it){
@@ -1325,7 +1333,7 @@ function pointageDayToTasks(pid,di){
     if(it.num && cColorOverride[it.num]!==undefined) colorIdx=cColorOverride[it.num];
     else if(existingTaskMap[it.taskId] && existingTaskMap[it.taskId].colorIdx!=null) colorIdx=existingTaskMap[it.taskId].colorIdx;
     var tk=sanitizeTask({id:it.taskId||undefined,type:it.type||'P',num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:colorIdx});
-    if(it.taskId && existingTaskMap[it.taskId] && !parTache[it.taskId]) parTache[it.taskId]=tk; else sansTache.push(tk);
+    if(it.taskId && existingTaskMap[it.taskId] && !parTache[it.taskId]) parTache[it.taskId]=tk; else if(!absenceDejaAuPlanning(it.num)) sansTache.push(tk);   // 261117-1640
   });
   // 261112-1830 : LES ABSENCES DU PLANNING SONT CONSERVÉES. Congé, vacances, maladie, chômage, bureau
   // (types sans chantier) n'ont pas de ligne au pointage : le report, qui remplace la journée du
@@ -1340,6 +1348,7 @@ function pointageDayToTasks(pid,di){
   (day.extras||[]).forEach(function(it){
     var h=roundQuarter(it.h); if(h<=0) return;
     if(!String(it.num||'').trim()&&!String(it.nom||'').trim()) return;
+    if(absenceDejaAuPlanning(it.num)) return;   // 261117-1640 : absence déjà au planning
     tasks.push(sanitizeTask({type:it.type||dft,num:it.num||'',nom:it.nom||'',mbl:it.mbl||'',h:h,colorIdx:(it.num&&cColorOverride[it.num]!==undefined)?cColorOverride[it.num]:null}));
   });
   return tasks;
@@ -1435,10 +1444,13 @@ var BTN_VERT='background:#dcfce7;border:1px solid #86efac;color:#166534';
 var BTN_ORANGE='background:#ffedd5;border:1px solid #fb923c;color:#9a3412';
 function pointageAReporter(pid,di){
   var day=getPointageDay(pid,di); if(!day) return false;
+  var plan={}, absences={}, absFamille={};
+  getDayTasks(pid,di).forEach(function(t){ if(NOCH[t.type]){absences[t.id]=1; absFamille[t.type]=1;} else plan[t.id]=t; });
+  // 261117-1640 : une ligne sur un poste d'absence (0005/0006/0007) dont l'absence est déjà au
+  // planning n'est pas reportée (cf. pointageDayToTasks) : elle ne rend pas le bouton orange.
+  function absDeja(num){ var f=ABSENCE_NUMS[String(num||'').trim()]; return !!(f && absFamille[f]); }
   var ex=day.extras||[];
-  for(var i=0;i<ex.length;i++){ if(imprevuComplet(ex[i])) return true; }
-  var plan={}, absences={};
-  getDayTasks(pid,di).forEach(function(t){ if(NOCH[t.type]) absences[t.id]=1; else plan[t.id]=t; });
+  for(var i=0;i<ex.length;i++){ if(imprevuComplet(ex[i]) && !absDeja(ex[i].num)) return true; }
   var its=day.items||[];
   for(var j=0;j<its.length;j++){
     var it=its[j]; if(!it) continue;
@@ -1447,7 +1459,7 @@ function pointageAReporter(pid,di){
     if(it.taskId && absences[it.taskId]) continue;
     var t=it.taskId?plan[it.taskId]:null;
     var h=it.hidden?0:roundQuarter(it.h);
-    if(!t){ if(h>0) return true; continue; }
+    if(!t){ if(h>0 && !absDeja(it.num)) return true; continue; }   // 261117-1640
     if(h!==roundQuarter(t.h)) return true;                     // heures pointées ≠ planning (ou ligne masquée / à 0 h)
     if((it.type||t.type)!==t.type) return true;                // section changée au pointage
     if(String(it.mbl||'').trim()!==String(t.mbl||'').trim()) return true;   // LOT changé au pointage
