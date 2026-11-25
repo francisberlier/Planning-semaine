@@ -957,7 +957,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261125-1200";
+var APP_VERSION="V1 261125-1230";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -3658,7 +3658,11 @@ function renderDashboard(){
   // 261125-1200 : un re-rendu (bouton Deplacer, tri, filtre...) ne referme plus ce qui
   // etait deplie : chantiers, postes, LOTs, lignes et tableaux personnes x mois rouvrent
   // au meme endroit (ids stables + fleches ar_<id>). La position de defilement est gardee.
-  var vbOuverts=[], vbScrollY=window.scrollY;
+  // 261125-1230 : la page ne defile PAS par la fenetre (html,body overflow:hidden) mais
+  // dans le conteneur .dash-wrap, reconstruit a chaque rendu : c'est SON scrollTop qu'il
+  // faut garder, sinon l'ecran repart en haut apres un deplacement.
+  var vbWrapAvant=el.querySelector('.dash-wrap');
+  var vbOuverts=[], vbScrollY=vbWrapAvant?vbWrapAvant.scrollTop:0;
   el.querySelectorAll('[id]').forEach(function(b){
     if(b.style && b.style.display==='block' && document.getElementById('ar_'+b.id)) vbOuverts.push(b.id);
   });
@@ -3840,7 +3844,8 @@ function renderDashboard(){
     var b=document.getElementById(id), ar=document.getElementById('ar_'+id);
     if(b){ b.style.display='block'; if(ar) ar.textContent='▾'; }
   });
-  if(vbOuverts.length) window.scrollTo(0,vbScrollY);
+  var vbWrapApres=el.querySelector('.dash-wrap');
+  if(vbWrapApres && vbScrollY) vbWrapApres.scrollTop=vbScrollY;   // 261125-1230
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────
