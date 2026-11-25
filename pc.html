@@ -957,7 +957,7 @@ function uid(){return 't'+Date.now().toString(36)+Math.random().toString(36).sli
 var nextLineId=1;
 function allocLineId(){var id=nextLineId; nextLineId=id+1; return id;}
 var isRendering=false;
-var APP_VERSION="V1 261119-1700";
+var APP_VERSION="V1 261125-1200";
 function noteLineId(v){v=parseInt(v,10); if(!isNaN(v)&&v>=nextLineId) nextLineId=v+1;}
 function clone(v){return v==null?null:JSON.parse(JSON.stringify(v));}
 function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -3311,14 +3311,16 @@ function chantierDetailHtml(C,safeId,num){
       +'</div>';
     // LOT detail row (hidden by default)
     var lots=(C.byPosteLot[t]||{});
-    var lkeys=Object.keys(lots).sort(function(a,b){return lots[b]-lots[a];});
+    // 261125-1200 : les LOTs sont tries par NUMERO (01, 02, 03..., puis GEN, ADMIN...),
+    // plus par heures - demande de Francis (deplacements d'heures entre lots).
+    var lkeys=Object.keys(lots).sort(vbCmpLots);
     var maxL=0; lkeys.forEach(function(k){if(lots[k]>maxL)maxL=lots[k];});
     html+='<div class="lot-list" id="'+posteId+'" style="display:none">';
     if(!lkeys.length) html+='<div class="lot-row" style="color:#94a3b8">Aucun LOT.</div>';
     lkeys.forEach(function(k,ki){
       var v2=lots[k];
       var lines=(C.lines&&C.lines[t+'|'+k])||[];
-      var lid=posteId+'_l'+ki;
+      var lid=posteId+'_l'+String(k).replace(/[^a-z0-9]/gi,'_');   // 261125-1200 : id stable (survit au re-rendu)
       html+='<div class="lot-row vb-lot-click" onclick="togglePosteDetail(\''+lid+'\')" title="Cliquer pour voir les prestations"><span class="lot-name"><span class="dash-arrow" id="ar_'+lid+'">▸</span> '+escAttr(k==='(sans LOT)'?k:lotLabel(num,k))+'</span><span class="lot-bar">'+dashBar(v2,maxL,ti.col)+'</span><span class="lot-h">'+fmtH(v2)+'</span></div>';
       html+='<div class="vb-mv-lines" id="'+lid+'" style="display:none">'+mvLignesHtml(lines,lid,mvOn)+'</div>';
     });
@@ -3327,6 +3329,19 @@ function chantierDetailHtml(C,safeId,num){
   if(!anyPoste) html+='<div style="color:#94a3b8;padding:6px 0">Aucune heure encodée.</div>';
   html+='</div>';
   return html;
+}
+// 261125-1200 : ordre des LOTs dans le detail d'un poste : « (sans LOT) » d'abord,
+// puis les codes numeriques croissants (01, 02, 2A, 03..., '028'≡28), puis les autres
+// (ADMIN, GEN...) par ordre alphabetique.
+function vbCmpLots(a,b){
+  if(a===b) return 0;
+  if(a==='(sans LOT)') return -1;
+  if(b==='(sans LOT)') return 1;
+  var ma=/^(\d+)([a-z]?)$/.exec(vbNormCode(a)), mb=/^(\d+)([a-z]?)$/.exec(vbNormCode(b));
+  if(ma&&mb) return (parseInt(ma[1],10)-parseInt(mb[1],10))||ma[2].localeCompare(mb[2])||String(a).localeCompare(String(b));
+  if(ma) return -1;
+  if(mb) return 1;
+  return String(a).localeCompare(String(b),'fr');
 }
 function togglePosteDetail(id){
   var box=document.getElementById(id); var ar=document.getElementById('ar_'+id);
@@ -3640,6 +3655,13 @@ function setM12Mode(m){
 function toggleM12Detail(safePid){var els=document.querySelectorAll('.m12-'+safePid); els.forEach(function(el){el.style.display=(el.style.display==='none')?'':'none';});}
 function renderDashboard(){
   var el=document.getElementById('tab-dashboard'); if(!el) return;
+  // 261125-1200 : un re-rendu (bouton Deplacer, tri, filtre...) ne referme plus ce qui
+  // etait deplie : chantiers, postes, LOTs, lignes et tableaux personnes x mois rouvrent
+  // au meme endroit (ids stables + fleches ar_<id>). La position de defilement est gardee.
+  var vbOuverts=[], vbScrollY=window.scrollY;
+  el.querySelectorAll('[id]').forEach(function(b){
+    if(b.style && b.style.display==='block' && document.getElementById('ar_'+b.id)) vbOuverts.push(b.id);
+  });
   MV_LINES=[]; mvSel={}; // 261027-2100 : la sélection ne survit pas à un nouveau rendu
   var agg=dashboardAggregate();
   DASH_AGG=agg; // 261027-2200 : pour le tableau personnes × mois et l'export Excel
@@ -3813,6 +3835,12 @@ function renderDashboard(){
   html+='</div>';
   html+='<div class="vb-mv-bar" id="vb-mv-bar" style="display:none"></div>';
   el.innerHTML=html;
+  // 261125-1200 : rouvrir ce qui etait deplie avant le re-rendu
+  vbOuverts.forEach(function(id){
+    var b=document.getElementById(id), ar=document.getElementById('ar_'+id);
+    if(b){ b.style.display='block'; if(ar) ar.textContent='▾'; }
+  });
+  if(vbOuverts.length) window.scrollTo(0,vbScrollY);
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────
